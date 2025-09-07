@@ -1,0 +1,25 @@
+stiles and rails are 2 1/4" wide using a 1/2 deep stick depth tool
+
+inside sticking = Quater round
+outside profile = none
+
+material is 13/16 thick for stiles and rails
+
+and for the panel it is whatever is called out in the order for the panel
+
+this is a cope and stick  door so stile and rail length calculations are as follows:
+the stile is cut 1/4 longer and 1/8 wider for triming
+the rail is door finish width - ((2*rail width) + (2*stick depth))
+
+sticking for this style is 1/2 
+
+panel sizes for the door will be 
+height = finish sizes - (rail width + ((stick*2) - 1/8))
+width = finish size -(rail width + ((stick*2) - 1/8))
+
+
+this is a 5 piece door
+a 5 piece door has 5 parts it has 
+2 stiles
+2 rails
+1 panel

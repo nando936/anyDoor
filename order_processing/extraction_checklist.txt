@@ -1,0 +1,56 @@
+
+MANUAL DATA EXTRACTION CHECKLIST
+PDF: user_submitted_order.pdf
+Date: 2025-09-07 16:37
+============================================================
+
+CUSTOMER INFORMATION:
+[ ] Name: ________________________________
+[ ] Address: _____________________________
+[ ] Phone: _______________________________
+[ ] Email: _______________________________
+
+JOB INFORMATION:
+[ ] Job Name: ____________________________
+[ ] Job Number: __________________________
+[ ] Date: ________________________________
+
+DOOR SPECIFICATIONS:
+[ ] Wood Species: ________________________
+[ ] Door Style #: ________________________
+[ ] Outside Edge: ________________________
+[ ] Inside Edge/Sticky: __________________
+[ ] Panel Cut: ___________________________
+[ ] Bore/Door Prep: [ ] Yes  [ ] No
+[ ] Hinge Type: __________________________
+[ ] Overlay: _____________________________
+[ ] Door Sizes: [ ] Opening  [ ] Finish
+
+LINE ITEMS:
+============================================================
+Line # | Cab # | Qty | Width | Height | Type | Notes
+-------|-------|-----|-------|--------|------|-------
+1      |       |     |       |        |      |
+2      |       |     |       |        |      |
+3      |       |     |       |        |      |
+4      |       |     |       |        |      |
+5      |       |     |       |        |      |
+6      |       |     |       |        |      |
+7      |       |     |       |        |      |
+8      |       |     |       |        |      |
+9      |       |     |       |        |      |
+10     |       |     |       |        |      |
+
+SPECIAL NOTES:
+============================================================
+Line # | Special Instructions
+-------|---------------------
+
+
+
+IMPORTANT REMINDERS:
+- Line numbers from PDF become Cabinet numbers in all reports
+- Multiple items can have same cabinet number
+- Special notes must stay with their line items
+- Verify all dimensions are in fraction format (e.g., 14 3/8)
+- Type can be: door, drawer, or false_front

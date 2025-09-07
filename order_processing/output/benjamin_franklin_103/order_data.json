@@ -1,0 +1,135 @@
+{
+  "customer_info": {
+    "name": "Benjamin Franklin",
+    "address": "1706 Market Street, Philadelphia TX 77019",
+    "phone": "(713) 555-1706",
+    "email": "bfranklin@customkitchens.com",
+    "job_name": "Franklin Master Kitchen",
+    "job_number": "103",
+    "date": "01/08/2025",
+    "wood_species": "Paint Grade, Stain Grade Maple",
+    "door_style": "103",
+    "hinge_type": "Blum Soft Close Frameless 1/2\"OL",
+    "overlay": "1/2\"",
+    "bore_prep": true,
+    "door_sizes": "finish",
+    "panel_cut": "1/4 Panel",
+    "outside_edge": "Standard for #103",
+    "inside_edge": "Standard for #103",
+    "drawer_type": "5 piece"
+  },
+  "door_style": "103",
+  "door_items": [
+    {
+      "line": 1,
+      "cabinet": 1,
+      "qty": 2,
+      "width": "14 1/2",
+      "height": "30 1/4",
+      "type": "door",
+      "material": "Paint Grade",
+      "notes": ""
+    },
+    {
+      "line": 2,
+      "cabinet": 2,
+      "qty": 2,
+      "width": "15 3/4",
+      "height": "30 1/4",
+      "type": "door",
+      "material": "Paint Grade",
+      "notes": "No hinges"
+    },
+    {
+      "line": 3,
+      "cabinet": 3,
+      "qty": 2,
+      "width": "11 3/4",
+      "height": "24 3/4",
+      "type": "door",
+      "material": "Paint Grade",
+      "notes": ""
+    },
+    {
+      "line": 4,
+      "cabinet": 4,
+      "qty": 1,
+      "width": "17 7/8",
+      "height": "24 3/4",
+      "type": "door",
+      "material": "Paint Grade",
+      "notes": "No hinges"
+    },
+    {
+      "line": 5,
+      "cabinet": 5,
+      "qty": 2,
+      "width": "14 1/4",
+      "height": "42 1/2",
+      "type": "door",
+      "material": "Paint Grade",
+      "notes": ""
+    },
+    {
+      "line": 6,
+      "cabinet": 6,
+      "qty": 2,
+      "width": "15 5/8",
+      "height": "19 1/4",
+      "type": "door",
+      "material": "Paint Grade",
+      "notes": "No hinges"
+    },
+    {
+      "line": 7,
+      "cabinet": 7,
+      "qty": 1,
+      "width": "23 7/8",
+      "height": "30 1/4",
+      "type": "door",
+      "material": "Stain Grade Maple",
+      "notes": ""
+    },
+    {
+      "line": 8,
+      "cabinet": 8,
+      "qty": 2,
+      "width": "17 1/2",
+      "height": "30 1/4",
+      "type": "door",
+      "material": "Stain Grade Maple",
+      "notes": ""
+    },
+    {
+      "line": 9,
+      "cabinet": 9,
+      "qty": 2,
+      "width": "14 7/8",
+      "height": "24 3/4",
+      "type": "door",
+      "material": "Stain Grade Maple",
+      "notes": ""
+    },
+    {
+      "line": 10,
+      "cabinet": 10,
+      "qty": 2,
+      "width": "17 1/2",
+      "height": "24 3/4",
+      "type": "door",
+      "material": "Stain Grade Maple",
+      "notes": "No hinges"
+    },
+    {
+      "line": 11,
+      "cabinet": 11,
+      "qty": 2,
+      "width": "20 3/8",
+      "height": "36 1/2",
+      "type": "door",
+      "material": "Stain Grade Maple",
+      "notes": ""
+    }
+  ],
+  "processed_date": "2025-09-07 17:59:47"
+}

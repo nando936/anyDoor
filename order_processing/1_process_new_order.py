@@ -221,9 +221,9 @@ def create_finish_door_list_html(customer_info, door_items, door_style, door_spe
                 <th width="12%">Width</th>
                 <th width="12%">Height</th>
                 <th width="10%">Type</th>
-                <th width="15%">Material</th>
+                <th width="18%">Material</th>
                 <th width="8%">Style</th>
-                <th width="25%">Notes</th>
+                <th width="22%">Notes</th>
             </tr>
         </thead>
         <tbody>"""
@@ -257,6 +257,10 @@ def create_finish_door_list_html(customer_info, door_items, door_style, door_spe
     html += """
         </tbody>
     </table>
+    
+    <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ccc; text-align: center; font-size: 12px; color: #666;">
+        <p>anyDoor Report generated: """ + datetime.now().strftime("%Y-%m-%d %I:%M:%S %p") + """</p>
+    </div>
     
     <script>
         // Auto-save changes
@@ -316,10 +320,27 @@ def generate_shop_report_html(customer_info, door_items, door_style, door_specs=
     # Get dimensions from specs if available
     stile_width = "3"  # Default from 231 specs
     material_thickness = "13/16"  # Default from 231 specs
+    is_cope_and_stick = False
+    stile_length_oversize = 0  # Extra length for stiles
+    stile_width_oversize = 0   # Extra width for stiles
     
     if door_specs and door_specs.get('raw_text'):
         # Parse from specs text
         specs_text = door_specs['raw_text'].lower()
+        
+        # Check if it's cope and stick
+        if 'cope and stick' in specs_text:
+            is_cope_and_stick = True
+            # Look for oversize requirements
+            if 'stile is cut' in specs_text:
+                # Extract oversize amounts (e.g., "1/4 longer and 1/8 wider")
+                import re
+                length_match = re.search(r'(\d+/\d+) longer', specs_text)
+                width_match = re.search(r'(\d+/\d+) wider', specs_text)
+                if length_match:
+                    stile_length_oversize = fraction_to_decimal(length_match.group(1))
+                if width_match:
+                    stile_width_oversize = fraction_to_decimal(width_match.group(1))
         
         # Extract stile/rail width (look for "3" wide" or similar)
         import re
@@ -358,8 +379,20 @@ def generate_shop_report_html(customer_info, door_items, door_style, door_specs=
             width = fraction_to_decimal(item['width'])
             height = fraction_to_decimal(item['height'])
             qty = item['qty']
-            # For mitre cut doors, stiles and rails are exact dimensions
-            materials_by_species[species]['linear_inches'] += qty * 2 * (width + height)
+            
+            # Calculate actual stick lengths needed
+            if is_cope_and_stick:
+                # Cope and stick: stiles need extra length and width for trimming
+                stile_length = height + stile_length_oversize  # Add oversize for trimming
+                stile_cut_width = fraction_to_decimal(stile_width) + stile_width_oversize  # Add width oversize
+                rail_length = width  # Rails use door width for cope & stick
+                
+                # Total linear inches: 2 stiles + 2 rails per door
+                # Note: We calculate based on the cutting length, not the stile width
+                materials_by_species[species]['linear_inches'] += qty * 2 * (stile_length + rail_length)
+            else:
+                # Mitre cut doors: stiles and rails are exact dimensions
+                materials_by_species[species]['linear_inches'] += qty * 2 * (width + height)
     
     # Calculate total doors and drawers
     total_doors = sum(mat['doors'] for mat in materials_by_species.values())
@@ -450,12 +483,30 @@ def generate_shop_report_html(customer_info, door_items, door_style, door_specs=
         if counts['linear_inches'] > 0:
             # Calculate 8-foot pieces needed
             eight_foot_pieces = int((counts['linear_inches'] / 96) + 0.999)  # Round up
+            
+            # Calculate actual width for board feet
+            if is_cope_and_stick and stile_width_oversize > 0:
+                actual_width = fraction_to_decimal(stile_width) + stile_width_oversize
+                width_str = decimal_to_fraction(actual_width)
+                size_note = f"{width_str}\" x {material_thickness}\" x 8' (includes 1/8\" oversize)"
+            else:
+                actual_width = fraction_to_decimal(stile_width)
+                width_str = stile_width
+                size_note = f"{stile_width}\" x {material_thickness}\" x 8'"
+            
+            # Calculate board feet: (width in inches × length in inches × quantity) / 144
+            # Each stick is 8 feet = 96 inches
+            board_feet = (actual_width * 96 * eight_foot_pieces) / 144
+            
+            # Format board feet to 2 decimal places
+            bf_str = f"{board_feet:.2f} BF"
+            
             html += f"""
             <tr>
                 <td>Stile Sticks</td>
                 <td>{eight_foot_pieces} pcs</td>
-                <td>{stile_width}" x {material_thickness}" x 8'</td>
-                <td>{species}</td>
+                <td>{size_note}</td>
+                <td>{species} - {bf_str}</td>
             </tr>"""
     
     # Add hinges as separate line item
@@ -470,7 +521,46 @@ def generate_shop_report_html(customer_info, door_items, door_style, door_specs=
     
     html += f"""
         </table>
-    </div>
+    </div>"""
+    
+    # Add special notes section if there are any notes
+    # Group cabinets by their notes
+    from collections import defaultdict
+    notes_by_text = defaultdict(list)
+    
+    for item in door_items:
+        if item.get('notes') and item['notes'].strip():
+            note_text = item['notes'].strip().lower()  # Normalize for grouping
+            notes_by_text[note_text].append(item['cabinet'])
+    
+    if notes_by_text:
+        html += f"""
+    
+    <div class="section">
+        <h2>Special Notes & Instructions</h2>
+        <table>
+            <tr>
+                <th width="30%">Cabinet(s)</th>
+                <th width="70%">Notes</th>
+            </tr>"""
+        
+        # Sort notes for consistent display
+        for note_text, cabinets in sorted(notes_by_text.items()):
+            # Format cabinet list
+            cabinet_list = ', '.join([f"#{cab}" for cab in sorted(cabinets)])
+            # Capitalize first letter of note for display
+            display_note = note_text[0].upper() + note_text[1:] if note_text else note_text
+            html += f"""
+            <tr>
+                <td>{cabinet_list}</td>
+                <td>{display_note}</td>
+            </tr>"""
+        
+        html += """
+        </table>
+    </div>"""
+    
+    html += f"""
     
     <div class="section">
         <h2>Door Style #{door_style} & Hardware</h2>
@@ -495,6 +585,10 @@ def generate_shop_report_html(customer_info, door_items, door_style, door_specs=
             </div>
         </div>
     </div>
+    
+    <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ccc; text-align: center; font-size: 12px; color: #666;">
+        <p>anyDoor Report generated: """ + datetime.now().strftime("%Y-%m-%d %I:%M:%S %p") + """</p>
+    </div>
 </body>
 </html>"""
     
@@ -507,14 +601,31 @@ def generate_cut_list_html(customer_info, door_items, door_style, door_specs=Non
     stile_width = "3"  # Default from 231 specs
     material_thickness = "13/16"  # Default from 231 specs
     is_mitre_cut = True  # Default for 231
+    is_cope_and_stick = False
+    stile_length_oversize = 0  # Extra length for stiles
+    stile_width_oversize = 0   # Extra width for stiles
     
     if door_specs and door_specs.get('raw_text'):
         # Parse from specs text
         specs_text = door_specs['raw_text'].lower()
         
-        # Check if it's a mitre cut door
+        # Check if it's a mitre cut door or cope and stick
         if 'mitre cut' in specs_text:
             is_mitre_cut = True
+            is_cope_and_stick = False
+        elif 'cope and stick' in specs_text:
+            is_mitre_cut = False
+            is_cope_and_stick = True
+            # Look for oversize requirements
+            if 'stile is cut' in specs_text:
+                # Extract oversize amounts (e.g., "1/4 longer and 1/8 wider")
+                import re
+                length_match = re.search(r'(\d+/\d+) longer', specs_text)
+                width_match = re.search(r'(\d+/\d+) wider', specs_text)
+                if length_match:
+                    stile_length_oversize = fraction_to_decimal(length_match.group(1))
+                if width_match:
+                    stile_width_oversize = fraction_to_decimal(width_match.group(1))
         
         # Extract stile/rail width
         import re
@@ -537,47 +648,93 @@ def generate_cut_list_html(customer_info, door_items, door_style, door_specs=Non
                 stile_length = height
                 # Rails = door width
                 rail_length = width
+                # Use standard stile width
+                stile_cut_width = stile_width
             else:
-                # For cope and stick doors (traditional calculation)
-                # Stiles (height + 1/4")
-                stile_length = height + 0.25
-                # Rails (width - 4 1/2" + 3/4")
-                rail_length = width - 3.75
+                # For cope and stick doors
+                # Stiles need extra length and width for trimming
+                stile_length = height + stile_length_oversize  # Add oversize (typically 1/4")
+                # Rails calculation based on door specs
+                # From specs: rail is door finish width - ((2*rail width) + (2*stick depth))
+                # Note: Rails use original stile width, NOT the oversize width
+                stile_width_decimal = fraction_to_decimal(stile_width)
+                stick_depth = 0.5  # Default 1/2" stick depth
+                rail_length = width - ((2 * stile_width_decimal) + (2 * stick_depth))
+                
+                # Apply width oversize to stiles
+                if stile_width_oversize > 0:
+                    stile_width_decimal_with_oversize = stile_width_decimal + stile_width_oversize
+                    stile_cut_width = decimal_to_fraction(stile_width_decimal_with_oversize)
+                else:
+                    stile_cut_width = stile_width
             
             cuts.append({
                 'qty': qty * 2,
                 'length': stile_length,
-                'width': f'{stile_width}"',
+                'width': f'{stile_cut_width}"',
                 'part': 'STILES',
                 'label': f"Cabinet #{item['cabinet']}",
                 'desc': f"{qty} {item['type']} @ {item['width']} x {item['height']}",
-                'material': material
+                'material': material,
+                'has_oversize': stile_width_oversize > 0 or stile_length_oversize > 0
             })
             
             cuts.append({
                 'qty': qty * 2,
                 'length': rail_length,
-                'width': f'{stile_width}"',
+                'width': f'{stile_width}"',  # Rails don't get width oversize
                 'part': 'RAILS',
                 'label': f"Cabinet #{item['cabinet']}",
                 'desc': f"{qty} {item['type']} @ {item['width']} x {item['height']}",
-                'material': material
+                'material': material,
+                'has_oversize': False
             })
     
-    # Sort by length (longest first)
-    cuts.sort(key=lambda x: x['length'], reverse=True)
+    # Group cuts by length, width, part, and material
+    from collections import defaultdict
+    grouped_cuts = defaultdict(lambda: {'qty': 0, 'cabinets': []})
+    
+    for cut in cuts:
+        key = (cut['length'], cut['width'], cut['part'], cut.get('material', 'White Oak'))
+        grouped_cuts[key]['qty'] += cut['qty']
+        grouped_cuts[key]['cabinets'].append({
+            'cabinet': cut['label'].replace('Cabinet #', ''),
+            'qty': cut['qty'],
+            'desc': cut['desc']
+        })
+    
+    # Convert to list and sort by material first, then by length (longest first), then by part (STILES before RAILS)
+    sorted_cuts = []
+    for key, value in grouped_cuts.items():
+        length, width, part, material = key
+        sorted_cuts.append({
+            'length': length,
+            'width': width,
+            'part': part,
+            'material': material,
+            'qty': value['qty'],
+            'cabinets': value['cabinets']
+        })
+    
+    # Sort: Paint Grade first, then other materials, within each group sort by length (descending) and part
+    sorted_cuts.sort(key=lambda x: (
+        0 if x['material'] == 'Paint Grade' else 1,  # Paint Grade first
+        -x['length'],  # Longest first within material
+        x['part']  # STILES before RAILS
+    ))
     
     html = f"""<!DOCTYPE html>
 <html>
 <head>
     <title>Cut List - {customer_info['job_name']}</title>
     <style>
-        body {{ font-family: Arial, sans-serif; margin: 20px; font-size: 11px; }}
-        h1 {{ font-size: 16px; }}
-        h2 {{ font-size: 14px; margin-top: 20px; }}
+        body {{ font-family: Arial, sans-serif; margin: 20px; }}
+        h1 {{ font-size: 24px; margin: 0 0 15px 0; }}
+        h2 {{ font-size: 18px; margin-top: 20px; text-decoration: underline; }}
         table {{ border-collapse: collapse; width: 100%; margin-top: 10px; }}
-        th, td {{ border: 1px solid black; padding: 3px; text-align: left; }}
+        th, td {{ border: 1px solid black; padding: 8px; text-align: left; font-size: 14px; }}
         th {{ background-color: #f0f0f0; font-weight: bold; }}
+        p {{ font-size: 14px; margin: 8px 0; }}
         @media print {{ body {{ margin: 10px; }} }}
     </style>
 </head>
@@ -589,25 +746,38 @@ def generate_cut_list_html(customer_info, door_items, door_style, door_specs=Non
     <table>
         <tr>
             <th width="8%">QTY</th>
-            <th width="12%">LENGTH</th>
-            <th width="10%">WIDTH</th>
+            <th width="20%">SIZE (W x L)</th>
             <th width="10%">PART</th>
-            <th width="12%">CABINET</th>
-            <th width="15%">MATERIAL</th>
-            <th width="33%">DESCRIPTION</th>
+            <th width="42%">CABINETS</th>
+            <th width="20%" style="white-space: nowrap;">MATERIAL</th>
         </tr>"""
     
     total_stiles = 0
     total_rails = 0
     materials_totals = {}
+    current_material = None
     
-    for cut in cuts:
+    for cut in sorted_cuts:
         length_str = decimal_to_fraction(cut['length']) + '"'
-        material = cut.get('material', 'White Oak')
+        material = cut['material']
         
         # Track totals by material
         if material not in materials_totals:
             materials_totals[material] = {'stiles': 0, 'rails': 0}
+        
+        # Add material header row when material changes
+        if current_material != material:
+            if current_material is not None:
+                # Add separator row between materials
+                html += f"""
+        <tr style="background-color: #333; height: 2px;">
+            <td colspan="5" style="padding: 0;"></td>
+        </tr>"""
+            html += f"""
+        <tr style="background-color: #e0e0e0; font-weight: bold;">
+            <td colspan="5" style="text-align: center; font-size: 16px;">{material.upper()}</td>
+        </tr>"""
+            current_material = material
         
         if cut['part'] == 'STILES':
             materials_totals[material]['stiles'] += cut['qty']
@@ -616,15 +786,19 @@ def generate_cut_list_html(customer_info, door_items, door_style, door_specs=Non
             materials_totals[material]['rails'] += cut['qty']
             total_rails += cut['qty']
         
+        # Format cabinet list
+        cabinet_list = ', '.join([f"({cab['qty']}) #{cab['cabinet']}" for cab in cut['cabinets']])
+        
+        # Format size as width x length
+        size_str = f"{cut['width'].rstrip('"')} x {length_str}"
+        
         html += f"""
         <tr>
             <td>{cut['qty']}</td>
-            <td>{length_str}</td>
-            <td>{cut['width']}</td>
+            <td>{size_str}</td>
             <td>{cut['part']}</td>
-            <td>{cut['label']}</td>
-            <td>{material}</td>
-            <td style="font-size: 10px;">{cut['desc']}</td>
+            <td>{cabinet_list}</td>
+            <td style="white-space: nowrap;">{material}</td>
         </tr>"""
     
     html += f"""
@@ -643,6 +817,10 @@ def generate_cut_list_html(customer_info, door_items, door_style, door_specs=Non
         <p><strong>{material}:</strong> {counts['stiles']} stiles, {counts['rails']} rails = {counts['stiles'] + counts['rails']} pieces</p>"""
     
     html += """
+    </div>
+    
+    <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ccc; text-align: center; font-size: 12px; color: #666;">
+        <p>anyDoor Report generated: """ + datetime.now().strftime("%Y-%m-%d %I:%M:%S %p") + """</p>
     </div>
 </body>
 </html>"""
@@ -704,6 +882,11 @@ def process_order(customer_info, door_items, door_style, output_prefix):
     print(f"Processing order for {customer_info['name']}")
     print("=" * 60)
     
+    # Create output folder
+    output_folder = os.path.join('output', output_prefix)
+    os.makedirs(output_folder, exist_ok=True)
+    print(f"\nOutput folder: {output_folder}/")
+    
     # Load door specifications if available
     print("\n0. Loading Door Specifications...")
     door_specs = load_door_specs(door_style)
@@ -711,7 +894,7 @@ def process_order(customer_info, door_items, door_style, output_prefix):
     # 1. Create finish door list
     print("\n1. Creating Finish Door List...")
     door_list_html = create_finish_door_list_html(customer_info, door_items, door_style, door_specs)
-    door_list_file = f"{output_prefix}_door_list.html"
+    door_list_file = os.path.join(output_folder, "finish_door_list.html")
     with open(door_list_file, 'w', encoding='utf-8') as f:
         f.write(door_list_html)
     print(f"   [OK] Created: {door_list_file}")
@@ -719,7 +902,7 @@ def process_order(customer_info, door_items, door_style, output_prefix):
     # 2. Generate shop report
     print("\n2. Generating Shop Report...")
     shop_report_html = generate_shop_report_html(customer_info, door_items, door_style, door_specs)
-    shop_report_file = f"{output_prefix}_shop_report.html"
+    shop_report_file = os.path.join(output_folder, "shop_report.html")
     with open(shop_report_file, 'w', encoding='utf-8') as f:
         f.write(shop_report_html)
     print(f"   [OK] Created: {shop_report_file}")
@@ -727,21 +910,21 @@ def process_order(customer_info, door_items, door_style, output_prefix):
     # 3. Generate cut list
     print("\n3. Generating Cut List...")
     cut_list_html = generate_cut_list_html(customer_info, door_items, door_style, door_specs)
-    cut_list_file = f"{output_prefix}_cut_list.html"
+    cut_list_file = os.path.join(output_folder, "cut_list.html")
     with open(cut_list_file, 'w', encoding='utf-8') as f:
         f.write(cut_list_html)
     print(f"   [OK] Created: {cut_list_file}")
     
     # 4. Convert all to PDFs
     print("\n4. Converting to PDFs...")
-    html_to_pdf(door_list_html, f"{output_prefix}_door_list.pdf")
-    print(f"   [OK] Created: {output_prefix}_door_list.pdf")
+    html_to_pdf(door_list_html, os.path.join(output_folder, "finish_door_list.pdf"))
+    print(f"   [OK] Created: {os.path.join(output_folder, 'finish_door_list.pdf')}")
     
-    html_to_pdf(shop_report_html, f"{output_prefix}_shop_report.pdf")
-    print(f"   [OK] Created: {output_prefix}_shop_report.pdf")
+    html_to_pdf(shop_report_html, os.path.join(output_folder, "shop_report.pdf"))
+    print(f"   [OK] Created: {os.path.join(output_folder, 'shop_report.pdf')}")
     
-    html_to_pdf(cut_list_html, f"{output_prefix}_cut_list.pdf")
-    print(f"   [OK] Created: {output_prefix}_cut_list.pdf")
+    html_to_pdf(cut_list_html, os.path.join(output_folder, "cut_list.pdf"))
+    print(f"   [OK] Created: {os.path.join(output_folder, 'cut_list.pdf')}")
     
     # 5. Save JSON for future reference
     print("\n5. Saving JSON data...")
@@ -751,14 +934,14 @@ def process_order(customer_info, door_items, door_style, output_prefix):
         'door_items': door_items,
         'processed_date': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     }
-    json_file = f"{output_prefix}_data.json"
+    json_file = os.path.join(output_folder, "order_data.json")
     with open(json_file, 'w', encoding='utf-8') as f:
         json.dump(json_data, f, indent=2)
     print(f"   [OK] Created: {json_file}")
     
     print("\n" + "=" * 60)
     print("Order processing complete!")
-    print(f"All files created with prefix: {output_prefix}_*")
+    print(f"All files created in: {output_folder}/")
 
 # Example usage
 if __name__ == "__main__":
