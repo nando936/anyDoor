@@ -1,0 +1,15 @@
+stiles and rails are 3" wide
+material is 13/16 thick for stiles and rails
+and for the panel it is whatever is called out in the order for the panel
+
+this is a mitre cut door so stile and rail length calculations are exact outside dimensions of the door
+
+sticking for this style is 1/2 
+
+panel sizes for the door will be finish sizes - width + (sticking - 1/8) for both width and height
+
+this is a 5 piece door
+a 5 piece door has 5 parts it has 
+2 stiles
+2 rails
+1 panel

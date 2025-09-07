@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Cut List - Wiggins Job</title>
+    <style>
+        @page {
+            size: letter;
+            margin: 0.4in;
+        }
+        body {
+            font-family: Arial, sans-serif;
+            font-size: 10pt;
+            margin: 0;
+            padding: 10px;
+        }
+        h1 {
+            font-size: 16pt;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        h3 {
+            font-size: 11pt;
+            margin: 5px 0;
+        }
+        .header-info {
+            margin-bottom: 15px;
+            padding: 5px;
+            border: 1px solid #000;
+            font-size: 9pt;
+        }
+        .header-info p {
+            margin: 2px 0;
+            display: inline-block;
+            margin-right: 20px;
+        }
+        .cut-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 15px;
+            font-size: 9pt;
+        }
+        .cut-table th, .cut-table td {
+            border: 1px solid #000;
+            padding: 3px;
+            text-align: left;
+        }
+        .cut-table th {
+            background-color: #e0e0e0;
+            font-weight: bold;
+            font-size: 9pt;
+        }
+        .summary-section {
+            margin-top: 10px;
+            padding: 5px;
+            border: 1px solid #000;
+            background-color: #f5f5f5;
+            font-size: 9pt;
+        }
+        .summary-section p {
+            margin: 2px 0;
+        }
+        .check-box {
+            width: 12px;
+            height: 12px;
+            border: 1px solid #000;
+            display: inline-block;
+            margin-right: 3px;
+        }
+        .label-cell {
+            font-weight: bold;
+            text-align: center;
+        }
+        .formula-section {
+            margin-top: 10px;
+            border-top: 1px solid #000;
+            padding-top: 5px;
+            font-size: 8pt;
+        }
+        .formula-section p {
+            margin: 2px 0;
+        }
+        .signature-section {
+            margin-top: 10px;
+            font-size: 9pt;
+        }
+        .signature-section p {
+            margin: 3px 0;
+            display: inline-block;
+            margin-right: 30px;
+        }
+    </style>
+</head>
+<body>
+    <h1>CUT LIST</h1>
+    
+    <div class="header-info">
+        <p><strong>Date:</strong> 1/7/2025</p>
+        <p><strong>Job Name:</strong> Wiggins Job</p>
+        <p><strong>Customer:</strong> Kevin Fox</p>
+        <p><strong>Wood Species:</strong> WHITE OAK</p>
+        <p><strong>Total Doors & Drawers:</strong> 18</p>
+    </div>
+
+    <table class="cut-table">
+        <thead>
+            <tr>
+                <th style="width: 8%;">QTY</th>
+                <th style="width: 12%;">LENGTH</th>
+                <th style="width: 12%;">WIDTH</th>
+                <th style="width: 15%;">PART</th>
+                <th style="width: 15%;">LABEL</th>
+                <th style="width: 20%;">DESCRIPTION</th>
+                <th style="width: 10%;">CHECK</th>
+            </tr>
+        </thead>
+        <tbody>
+            <!-- Sorted by length descending -->
+            <!-- 45 1/4" Stiles -->
+            <tr>
+                <td>12</td>
+                <td>45 1/4"</td>
+                <td>2 3/8"</td>
+                <td>STILES</td>
+                <td class="label-cell">#3</td>
+                <td>6 doors 15×45</td>
+                <td><span class="check-box"></span></td>
+            </tr>
+            <!-- 36 1/4" Stiles -->
+            <tr>
+                <td>10</td>
+                <td>36 1/4"</td>
+                <td>2 3/8"</td>
+                <td>STILES</td>
+                <td class="label-cell">#1</td>
+                <td>5 doors 12×36</td>
+                <td><span class="check-box"></span></td>
+            </tr>
+            <!-- 32 1/4" Rails -->
+            <tr>
+                <td>8</td>
+                <td>32 1/4"</td>
+                <td>2 3/8"</td>
+                <td>RAILS</td>
+                <td class="label-cell">#2</td>
+                <td>4 drawers 36×6</td>
+                <td><span class="check-box"></span></td>
+            </tr>
+            <!-- 11 1/4" Rails -->
+            <tr>
+                <td>12</td>
+                <td>11 1/4"</td>
+                <td>2 3/8"</td>
+                <td>RAILS</td>
+                <td class="label-cell">#3</td>
+                <td>6 doors 15×45</td>
+                <td><span class="check-box"></span></td>
+            </tr>
+            <!-- 10 1/4" Rails -->
+            <tr>
+                <td>6</td>
+                <td>10 1/4"</td>
+                <td>2 3/8"</td>
+                <td>RAILS</td>
+                <td class="label-cell">#4</td>
+                <td>3 drawers 14×6</td>
+                <td><span class="check-box"></span></td>
+            </tr>
+            <!-- 8 1/4" Rails -->
+            <tr>
+                <td>10</td>
+                <td>8 1/4"</td>
+                <td>2 3/8"</td>
+                <td>RAILS</td>
+                <td class="label-cell">#1</td>
+                <td>5 doors 12×36</td>
+                <td><span class="check-box"></span></td>
+            </tr>
+            <!-- 6 1/4" Stiles (combined #2 and #4) -->
+            <tr>
+                <td>14</td>
+                <td>6 1/4"</td>
+                <td>2 3/8"</td>
+                <td>STILES</td>
+                <td class="label-cell">#2, #4</td>
+                <td>4 drawers + 3 drawers</td>
+                <td><span class="check-box"></span></td>
+            </tr>
+        </tbody>
+    </table>
+
+    <div class="summary-section">
+        <h3>CUTTING SUMMARY</h3>
+        <p><strong>Total Stiles:</strong> 36 pieces (12 @ 45 1/4", 10 @ 36 1/4", 14 @ 6 1/4")</p>
+        <p><strong>Total Rails:</strong> 36 pieces (8 @ 32 1/4", 12 @ 11 1/4", 6 @ 10 1/4", 10 @ 8 1/4")</p>
+        <p><strong>Total Pieces to Cut:</strong> 72</p>
+        <p><strong>Material Required:</strong> 19 pieces of 2 3/8" × 8' WHITE OAK</p>
+    </div>
+
+    <div class="formula-section">
+        <p><strong>Formula:</strong> Stiles = Height + 1/4" | Rails = Width - 4 1/2" + 3/4" | 2 each per door/drawer</p>
+    </div>
+
+    <div class="signature-section">
+        <p>Cut By: __________________ Date: _______</p>
+        <p>Checked By: _______________ Date: _______</p>
+    </div>
+</body>
+</html>

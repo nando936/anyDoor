@@ -1,0 +1,195 @@
+
+================================================================================
+CRITICAL MANUAL VERIFICATION CHECKLIST
+Order: paul_revere_231
+Date: 2025-09-07 13:16
+================================================================================
+
+[!] THIS IS A REDUNDANT CHECK - START FROM SCRATCH
+[!] DO NOT TRUST ANY PREVIOUS PROCESSING
+[!] MISTAKES ARE EXTREMELY EXPENSIVE TO FIX AFTER PRODUCTION
+
+STEP 1: OPEN THE ORIGINAL PDF/ORDER
+----------------------------------------
+[ ] Open the original user-submitted order in "need to process" folder
+[ ] Open the generated finish door list HTML in "output" folder
+[ ] Place them side by side on your screen
+
+STEP 2: VERIFY ORDER HEADER INFORMATION
+----------------------------------------
+[ ] Customer Name matches exactly
+[ ] Job Name/Number matches exactly
+[ ] Date matches
+[ ] Door Style number matches (e.g., #231)
+[ ] Wood Species matches (check if mixed species)
+
+STEP 3: CRITICAL - CHECK OPENING vs FINISH SIZES
+----------------------------------------
+[ ] Look at original order - find the checkbox for door sizes:
+    [ ] If "Opening Sizes" is checked - YOU MUST ADD 2 x overlay
+    [ ] If "Finish Sizes" is checked - sizes should match exactly
+    
+[ ] What is the overlay specified? _____________
+[ ] Calculate: 2 x overlay = _____________
+[ ] This amount must be added to BOTH width AND height if Opening Sizes
+
+STEP 4: LINE-BY-LINE VERIFICATION
+----------------------------------------
+Go through EACH line of the original order and check:
+
+LINE #1:
+[ ] Quantity: Original _____ vs Door List _____
+[ ] Width: Original _____ 
+    If Opening Size, add _____ = Expected Finish _____
+    Door List shows: _____
+[ ] Height: Original _____
+    If Opening Size, add _____ = Expected Finish _____
+    Door List shows: _____
+[ ] Type (door/drawer): Original _____ vs Door List _____
+[ ] Material/Species: Original _____ vs Door List _____
+[ ] Special Notes: _________________________________
+    [ ] Verified notes transferred correctly
+
+LINE #2:
+[ ] Quantity: Original _____ vs Door List _____
+[ ] Width: Original _____ 
+    If Opening Size, add _____ = Expected Finish _____
+    Door List shows: _____
+[ ] Height: Original _____
+    If Opening Size, add _____ = Expected Finish _____
+    Door List shows: _____
+[ ] Type (door/drawer): Original _____ vs Door List _____
+[ ] Material/Species: Original _____ vs Door List _____
+[ ] Special Notes: _________________________________
+    [ ] Verified notes transferred correctly
+
+LINE #3:
+[ ] Quantity: Original _____ vs Door List _____
+[ ] Width: Original _____ 
+    If Opening Size, add _____ = Expected Finish _____
+    Door List shows: _____
+[ ] Height: Original _____
+    If Opening Size, add _____ = Expected Finish _____
+    Door List shows: _____
+[ ] Type (door/drawer): Original _____ vs Door List _____
+[ ] Material/Species: Original _____ vs Door List _____
+[ ] Special Notes: _________________________________
+    [ ] Verified notes transferred correctly
+
+LINE #4:
+[ ] Quantity: Original _____ vs Door List _____
+[ ] Width: Original _____ 
+    If Opening Size, add _____ = Expected Finish _____
+    Door List shows: _____
+[ ] Height: Original _____
+    If Opening Size, add _____ = Expected Finish _____
+    Door List shows: _____
+[ ] Type (door/drawer): Original _____ vs Door List _____
+[ ] Material/Species: Original _____ vs Door List _____
+[ ] Special Notes: _________________________________
+    [ ] Verified notes transferred correctly
+
+LINE #5:
+[ ] Quantity: Original _____ vs Door List _____
+[ ] Width: Original _____ 
+    If Opening Size, add _____ = Expected Finish _____
+    Door List shows: _____
+[ ] Height: Original _____
+    If Opening Size, add _____ = Expected Finish _____
+    Door List shows: _____
+[ ] Type (door/drawer): Original _____ vs Door List _____
+[ ] Material/Species: Original _____ vs Door List _____
+[ ] Special Notes: _________________________________
+    [ ] Verified notes transferred correctly
+
+LINE #6:
+[ ] Quantity: Original _____ vs Door List _____
+[ ] Width: Original _____ 
+    If Opening Size, add _____ = Expected Finish _____
+    Door List shows: _____
+[ ] Height: Original _____
+    If Opening Size, add _____ = Expected Finish _____
+    Door List shows: _____
+[ ] Type (door/drawer): Original _____ vs Door List _____
+[ ] Material/Species: Original _____ vs Door List _____
+[ ] Special Notes: _________________________________
+    [ ] Verified notes transferred correctly
+
+LINE #7:
+[ ] Quantity: Original _____ vs Door List _____
+[ ] Width: Original _____ 
+    If Opening Size, add _____ = Expected Finish _____
+    Door List shows: _____
+[ ] Height: Original _____
+    If Opening Size, add _____ = Expected Finish _____
+    Door List shows: _____
+[ ] Type (door/drawer): Original _____ vs Door List _____
+[ ] Material/Species: Original _____ vs Door List _____
+[ ] Special Notes: _________________________________
+    [ ] Verified notes transferred correctly
+
+LINE #8:
+[ ] Quantity: Original _____ vs Door List _____
+[ ] Width: Original _____ 
+    If Opening Size, add _____ = Expected Finish _____
+    Door List shows: _____
+[ ] Height: Original _____
+    If Opening Size, add _____ = Expected Finish _____
+    Door List shows: _____
+[ ] Type (door/drawer): Original _____ vs Door List _____
+[ ] Material/Species: Original _____ vs Door List _____
+[ ] Special Notes: _________________________________
+    [ ] Verified notes transferred correctly
+
+(Add more lines as needed)
+
+STEP 5: CRITICAL NOTES CHECK
+----------------------------------------
+[ ] Check for "NO BORE" or "NO HINGE BORING" instructions
+    Lines with no bore: _________________________________
+    [ ] Verified these show in door list notes
+    
+[ ] Check for trash drawer pulls
+    Lines with trash pulls: _____________________________
+    [ ] Verified these show in door list notes
+    
+[ ] Check for any special instructions in original
+    Special instructions: ________________________________
+    [ ] Verified ALL transferred to door list
+
+STEP 6: TOTAL COUNT VERIFICATION
+----------------------------------------
+[ ] Count total doors in original: _____
+[ ] Count total doors in door list: _____
+[ ] THESE MUST MATCH EXACTLY
+
+[ ] If mixed species, verify counts by species:
+    Paint Grade: Original _____ vs Door List _____
+    White Oak: Original _____ vs Door List _____
+    Other: Original _____ vs Door List _____
+
+STEP 7: FINAL SIGN-OFF
+----------------------------------------
+[ ] I have manually verified EVERY line item
+[ ] I have double-checked the size conversions if Opening Sizes
+[ ] I have verified all special notes transferred
+[ ] I have counted total quantities and they match
+[ ] I understand mistakes are EXTREMELY EXPENSIVE after production
+
+Verified by: _________________________________
+Date: _______________________________________
+Time spent on verification: __________________
+
+ERRORS FOUND (if any):
+_________________________________________________
+_________________________________________________
+_________________________________________________
+_________________________________________________
+
+CORRECTIVE ACTIONS TAKEN:
+_________________________________________________
+_________________________________________________
+_________________________________________________
+_________________________________________________
+
+================================================================================

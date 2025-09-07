@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Project specific
+temp_report.html
+*.log
+.DS_Store
+
+# Sensitive
+github-token.txt
+token.txt
+credentials.json

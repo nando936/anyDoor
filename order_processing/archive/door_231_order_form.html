@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Door Order Form - Style 231</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: Arial, sans-serif; 
+            font-size: 10pt;
+            padding: 20px;
+            max-width: 850px;
+            margin: 0 auto;
+        }
+        .header-section {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 15px;
+        }
+        .left-header {
+            flex: 1;
+        }
+        .logo-section {
+            width: 200px;
+            text-align: center;
+            border: 2px solid #000;
+            padding: 10px;
+            margin-left: 20px;
+        }
+        h1 { 
+            font-size: 16pt;
+            margin-bottom: 5px;
+        }
+        .date-job {
+            margin-bottom: 15px;
+        }
+        .customer-section {
+            margin-bottom: 15px;
+        }
+        .customer-section h3 {
+            font-size: 11pt;
+            margin-bottom: 5px;
+            text-decoration: underline;
+        }
+        .field-row {
+            margin-bottom: 3px;
+        }
+        .field-label {
+            display: inline-block;
+            width: 70px;
+            font-weight: bold;
+        }
+        .door-info-section {
+            border: 2px solid #000;
+            padding: 10px;
+            margin-bottom: 15px;
+        }
+        .door-info-title {
+            text-align: center;
+            font-weight: bold;
+            font-size: 11pt;
+            margin-bottom: 10px;
+            text-decoration: underline;
+        }
+        .door-specs-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .door-specs-table td {
+            padding: 4px;
+            border: 1px solid #000;
+            vertical-align: middle;
+        }
+        .spec-label {
+            font-weight: bold;
+            background-color: #f0f0f0;
+            width: 120px;
+        }
+        .checkbox-container {
+            display: inline-block;
+            margin-right: 10px;
+        }
+        .checkbox {
+            width: 12px;
+            height: 12px;
+            border: 1px solid #000;
+            display: inline-block;
+            margin-right: 3px;
+            position: relative;
+            vertical-align: middle;
+        }
+        .checked::after {
+            content: "X";
+            position: absolute;
+            top: -2px;
+            left: 1px;
+            font-weight: bold;
+            font-size: 10px;
+        }
+        .order-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 15px;
+        }
+        .order-table th {
+            background-color: #f0f0f0;
+            border: 1px solid #000;
+            padding: 5px;
+            font-weight: bold;
+            text-align: center;
+        }
+        .order-table td {
+            border: 1px solid #000;
+            padding: 5px;
+            text-align: center;
+            height: 25px;
+        }
+        .special-notes {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #000;
+        }
+        .company-footer {
+            text-align: center;
+            margin-top: 20px;
+            font-size: 9pt;
+        }
+        @media print {
+            body { 
+                padding: 10px;
+                font-size: 9pt;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header-section">
+        <div class="left-header">
+            <h1>ORDER FORM</h1>
+            <div class="date-job">
+                <div><strong>Date:</strong> 09/07/2025</div>
+                <div><strong>Job Name:</strong> Revere Kitchen Remodel</div>
+            </div>
+            
+            <div class="customer-section">
+                <h3>Customer/Job Info:</h3>
+                <div class="field-row">
+                    <span class="field-label">Name:</span> Paul Revere
+                </div>
+                <div class="field-row">
+                    <span class="field-label">Address:</span> 1776 Liberty Lane, Boston TX 77385
+                </div>
+                <div class="field-row">
+                    <span class="field-label">Phone #:</span> (281) 555-1775
+                </div>
+                <div class="field-row">
+                    <span class="field-label">Email:</span> prevere@colonialcabinets.com
+                </div>
+            </div>
+        </div>
+        
+        <div class="logo-section">
+            <img src="https://theraisedpaneldoor.com/zirw/932/i/u/10227018/i/menu/title.png" 
+                 alt="The Raised Panel Door Factory" 
+                 style="width: 120px; height: auto; margin-bottom: 5px;">
+            <div style="font-weight: bold; font-size: 10pt;">THE RAISED PANEL</div>
+            <div style="font-weight: bold; font-size: 10pt;">DOOR FACTORY, INC.</div>
+            <div style="margin-top: 10px; font-size: 8pt;">
+                209 RIGGS ST.<br>
+                CONROE TX 77301<br><br>
+                MAIN: (936) 672-4235<br>
+                <span style="font-size: 7pt;">WWW.THERAISEDPANELDOOR.COM<br>
+                fernando@theraisedpaneldoor.com</span>
+            </div>
+        </div>
+    </div>
+    
+    <div class="door-info-section">
+        <div class="door-info-title">Door Order Info:</div>
+        <table class="door-specs-table">
+            <tr>
+                <td class="spec-label">Door Sizes:<br>(Check one)</td>
+                <td>
+                    <span class="checkbox-container">
+                        <span class="checkbox"></span> Finish Sizes
+                    </span>
+                    <span style="margin: 0 10px;">or</span>
+                    <span class="checkbox-container">
+                        <span class="checkbox checked"></span> Opening Sizes
+                    </span>
+                </td>
+                <td class="spec-label">Overlay Type:</td>
+                <td>1/2" Overlay</td>
+            </tr>
+            <tr>
+                <td class="spec-label">Bore/Door Prep:</td>
+                <td>
+                    <span class="checkbox-container">
+                        <span class="checkbox"></span> Yes
+                    </span>
+                    <span class="checkbox-container">
+                        <span class="checkbox checked"></span> No
+                    </span>
+                </td>
+                <td class="spec-label">Hinge Type:</td>
+                <td>Blum Soft Close Frameless 1/2"OL</td>
+            </tr>
+            <tr>
+                <td class="spec-label">Wood Species:</td>
+                <td>Paint Grade & White Oak (see notes)</td>
+                <td class="spec-label">Door #:</td>
+                <td style="font-weight: bold; color: red; font-size: 12pt;">231</td>
+            </tr>
+            <tr>
+                <td class="spec-label">Outside Edge:</td>
+                <td>Standard for #231</td>
+                <td class="spec-label">Sticking (Inside):</td>
+                <td>Standard for #231</td>
+            </tr>
+            <tr>
+                <td class="spec-label">Panel Cut:</td>
+                <td colspan="3">3/8" Plywood (Flat Panel ONLY)</td>
+            </tr>
+            <tr>
+                <td class="spec-label">Drawer/Front type:</td>
+                <td colspan="3">5 piece</td>
+            </tr>
+        </table>
+    </div>
+    
+    <table class="order-table">
+        <thead>
+            <tr>
+                <th width="5%">#</th>
+                <th width="10%">QTY</th>
+                <th width="15%">Width</th>
+                <th width="15%">Height</th>
+                <th width="25%">Doors/Drawer Details</th>
+                <th width="30%">Additional Notes</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>1</td>
+                <td>2</td>
+                <td>14 3/8</td>
+                <td>24 3/4</td>
+                <td>doors</td>
+                <td style="font-size: 9pt;">Cabinet #1 - Paint Grade</td>
+            </tr>
+            <tr>
+                <td>2</td>
+                <td>2</td>
+                <td>14 7/16</td>
+                <td>24 3/4</td>
+                <td>doors</td>
+                <td style="font-size: 9pt;">Cabinet #2 - Paint Grade</td>
+            </tr>
+            <tr>
+                <td>3</td>
+                <td>1</td>
+                <td>14 3/4</td>
+                <td>24 3/4</td>
+                <td>doors</td>
+                <td style="font-size: 9pt;">No hinge boring - trash drawer - Paint Grade</td>
+            </tr>
+            <tr>
+                <td>4</td>
+                <td>2</td>
+                <td>13 3/4</td>
+                <td>24 3/4</td>
+                <td>doors</td>
+                <td style="font-size: 9pt;">Cabinet #6 - Paint Grade</td>
+            </tr>
+            <tr>
+                <td>5</td>
+                <td>2</td>
+                <td>14 3/4</td>
+                <td>24 3/4</td>
+                <td>doors</td>
+                <td style="font-size: 9pt;">Cabinet #7 - Paint Grade</td>
+            </tr>
+            <tr>
+                <td>6</td>
+                <td>2</td>
+                <td>13 13/16</td>
+                <td>24 3/4</td>
+                <td>doors</td>
+                <td style="font-size: 9pt;">Cabinet #10 - White Oak</td>
+            </tr>
+            <tr>
+                <td>7</td>
+                <td>2</td>
+                <td>16 1/2</td>
+                <td>41 7/8</td>
+                <td>doors</td>
+                <td style="font-size: 9pt;">Cabinet #23 - White Oak</td>
+            </tr>
+            <tr>
+                <td>8</td>
+                <td>2</td>
+                <td>16 1/2</td>
+                <td>41 7/8</td>
+                <td>doors</td>
+                <td style="font-size: 9pt;">Cabinet #24 - White Oak</td>
+            </tr>
+            <tr>
+                <td>9</td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td>10</td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td>11</td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td>12</td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td>13</td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td>14</td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td>15</td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td>16</td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td>17</td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td>18</td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td>19</td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td>20</td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+        </tbody>
+    </table>
+    
+    <div style="margin-top: 10px; font-weight: bold;">
+        Total Doors Ordered: 15
+    </div>
+    
+    <div class="special-notes">
+        <strong>Special Instructions:</strong><br>
+        Door Style #231 - All doors only (no drawer fronts or false fronts)<br>
+        <span style="color: red; font-weight: bold;">IMPORTANT: No hinge boring on Cabinet #4 - Trash drawer</span>
+    </div>
+    
+    <div class="company-footer">
+        <p style="margin-top: 30px; border-top: 1px solid #000; padding-top: 10px;">
+            For Office Use Only: Order #_________ Date Received_________ Expected Completion_________
+        </p>
+    </div>
+</body>
+</html>

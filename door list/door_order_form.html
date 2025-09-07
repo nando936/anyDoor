@@ -1,0 +1,1016 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Door Order Form - The Raised Panel Door Factory</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: Arial, sans-serif;
+            background: white;
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .form-container {
+            background: white;
+            padding: 30px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 30px;
+            border-bottom: 2px solid #333;
+            padding-bottom: 20px;
+        }
+        
+        .left-header {
+            flex: 1;
+        }
+        
+        .title {
+            font-size: 36px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            letter-spacing: 2px;
+        }
+        
+        .date-job-section {
+            display: flex;
+            gap: 30px;
+            margin-bottom: 20px;
+        }
+        
+        .date-job-section label {
+            font-weight: bold;
+            margin-right: 5px;
+        }
+        
+        .customer-info {
+            margin-bottom: 30px;
+        }
+        
+        .customer-info h3 {
+            font-size: 18px;
+            text-decoration: underline;
+            margin-bottom: 15px;
+        }
+        
+        .info-row {
+            display: flex;
+            margin-bottom: 8px;
+        }
+        
+        .info-label {
+            font-weight: bold;
+            width: 80px;
+        }
+        
+        .info-value {
+            flex: 1;
+            border-bottom: 1px solid #ccc;
+            padding-left: 5px;
+        }
+        
+        .logo-section {
+            text-align: center;
+            padding: 20px;
+            border: 3px solid #333;
+            width: 280px;
+        }
+        
+        .logo-box {
+            background: linear-gradient(to bottom, #20b2aa 0%, #5f9ea0 100%);
+            padding: 20px;
+            border-radius: 5px;
+            color: white;
+            position: relative;
+            height: 200px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .logo-door {
+            width: 60px;
+            height: 80px;
+            background: white;
+            border: 2px solid #333;
+            position: relative;
+            margin: 0 auto 10px;
+        }
+        
+        .logo-door::before {
+            content: '';
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            right: 10px;
+            bottom: 30px;
+            border: 1px solid #333;
+        }
+        
+        .logo-door::after {
+            content: '';
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            right: 10px;
+            height: 15px;
+            border: 1px solid #333;
+        }
+        
+        .door-knob {
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            width: 6px;
+            height: 6px;
+            background: #333;
+            border-radius: 50%;
+        }
+        
+        .company-name {
+            font-weight: bold;
+            font-size: 16px;
+            text-align: center;
+            margin-top: 10px;
+        }
+        
+        .company-tagline {
+            font-size: 12px;
+            margin-top: 5px;
+        }
+        
+        .company-details {
+            margin-top: 15px;
+            font-size: 12px;
+            line-height: 1.6;
+            color: #333;
+        }
+        
+        .company-details .main-phone {
+            font-weight: bold;
+        }
+        
+        .company-details .website {
+            color: #0066cc;
+            text-decoration: underline;
+        }
+        
+        .door-order-section {
+            border: 2px solid #333;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .door-order-title {
+            font-size: 20px;
+            font-weight: bold;
+            text-align: center;
+            margin-bottom: 20px;
+            text-decoration: underline;
+        }
+        
+        .order-options {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .option-group {
+            display: flex;
+            align-items: center;
+            padding: 8px;
+            background: #f5f5f5;
+        }
+        
+        .option-label {
+            font-weight: bold;
+            margin-right: 10px;
+            min-width: 120px;
+        }
+        
+        .checkbox-group {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+        
+        input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            margin-right: 5px;
+        }
+        
+        input[type="text"], select {
+            padding: 5px;
+            border: 1px solid #ccc;
+            flex: 1;
+            font-size: 14px;
+        }
+        
+        .order-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 30px;
+        }
+        
+        .order-table th {
+            background: #333;
+            color: white;
+            padding: 10px;
+            text-align: left;
+            font-size: 14px;
+        }
+        
+        .order-table td {
+            border: 1px solid #333;
+            padding: 8px;
+            height: 35px;
+        }
+        
+        .order-table tr:nth-child(even) {
+            background: #f9f9f9;
+        }
+        
+        .order-table .row-number {
+            background: #e0e0e0;
+            text-align: center;
+            font-weight: bold;
+            width: 40px;
+        }
+        
+        .submit-section {
+            text-align: center;
+            margin-top: 40px;
+            padding: 20px;
+        }
+        
+        .submit-btn {
+            background: #dc3545;
+            color: white;
+            padding: 15px 60px;
+            font-size: 18px;
+            font-weight: bold;
+            border: none;
+            cursor: pointer;
+            letter-spacing: 1px;
+        }
+        
+        .submit-btn:hover {
+            background: #c82333;
+        }
+        
+        .submit-note {
+            margin-top: 15px;
+            padding: 15px;
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            font-size: 12px;
+            line-height: 1.6;
+        }
+        
+        @media print {
+            body {
+                padding: 0;
+            }
+            .form-container {
+                box-shadow: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="form-container">
+        <!-- Header Section -->
+        <div class="header">
+            <div class="left-header">
+                <h1 class="title">ORDER FORM</h1>
+                
+                <div class="date-job-section">
+                    <div>
+                        <label>Date:</label>
+                        <input type="text" value="1/7/2025" style="width: 100px;">
+                    </div>
+                    <div>
+                        <label>Job Name:</label>
+                        <input type="text" value="" style="width: 250px;">
+                    </div>
+                </div>
+                
+                <div class="customer-info">
+                    <h3>Customer/Job Info:</h3>
+                    <div class="info-row">
+                        <span class="info-label">Name:</span>
+                        <span class="info-value"><input type="text" style="width: 100%; border: none; border-bottom: 1px solid #ccc;"></span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Address:</span>
+                        <span class="info-value"><input type="text" style="width: 100%; border: none; border-bottom: 1px solid #ccc;"></span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Phone #:</span>
+                        <span class="info-value"><input type="text" style="width: 100%; border: none; border-bottom: 1px solid #ccc;"></span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Email:</span>
+                        <span class="info-value"><input type="text" style="width: 100%; border: none; border-bottom: 1px solid #ccc;"></span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="logo-section">
+                <div class="logo-box">
+                    <div class="logo-door">
+                        <div class="door-knob"></div>
+                    </div>
+                    <div class="company-name">
+                        THE<br>
+                        raised<br>
+                        panel<br>
+                        <span style="font-size: 10px;">DOOR FACTORY INC.</span>
+                    </div>
+                </div>
+                <div class="company-details">
+                    <strong>THE RAISED PANEL<br>
+                    DOOR FACTORY, INC.</strong><br>
+                    209 RIGGS ST.<br>
+                    CONROE TX 77301<br><br>
+                    <span class="main-phone">MAIN: (936) 672-4235</span><br>
+                    <span class="website">WWW.THERAISEDPANELDOOR.COM</span><br>
+                    fernando@theraisedpaneldoor.com
+                </div>
+            </div>
+        </div>
+        
+        <!-- Door Order Info Section -->
+        <div class="door-order-section">
+            <h2 class="door-order-title">Door Order Info:</h2>
+            
+            <div class="order-options">
+                <div class="option-group">
+                    <span class="option-label">Door Sizes:<br>(Check one)</span>
+                    <div class="checkbox-group">
+                        <label><input type="checkbox"> Finish Sizes</label>
+                        <span>or</span>
+                        <label><input type="checkbox" checked> Opening Sizes</label>
+                    </div>
+                </div>
+                
+                <div class="option-group">
+                    <span class="option-label">Overlay Type:</span>
+                    <select>
+                        <option>1/2" Overlay</option>
+                        <option>Full Overlay</option>
+                        <option>No Overlay</option>
+                    </select>
+                </div>
+                
+                <div class="option-group">
+                    <span class="option-label">Bore/Door Prep:</span>
+                    <div class="checkbox-group">
+                        <label><input type="checkbox" checked> Yes</label>
+                        <select style="width: 150px;">
+                            <option>Choose an item</option>
+                        </select>
+                        <label><input type="checkbox"> No</label>
+                    </div>
+                </div>
+                
+                <div class="option-group">
+                    <span class="option-label">Hinge Type:</span>
+                    <select>
+                        <option>Blum Soft Close Frameless 1/2"OL</option>
+                    </select>
+                    <label style="margin-left: 10px;"><input type="checkbox"> None</label>
+                </div>
+                
+                <div class="option-group">
+                    <span class="option-label">Wood Species:</span>
+                    <input type="text" value="White Oak">
+                </div>
+                
+                <div class="option-group">
+                    <span class="option-label">Door #:</span>
+                    <input type="text" value="" style="background: #ffff00;">
+                </div>
+                
+                <div class="option-group">
+                    <span class="option-label">Outside Edge:</span>
+                    <input type="text" value="">
+                </div>
+                
+                <div class="option-group">
+                    <span class="option-label">Sticking (Inside):</span>
+                    <input type="text" value="">
+                </div>
+                
+                <div class="option-group">
+                    <span class="option-label">Panel Cut:</span>
+                    <input type="text" value="3/8&quot; Plywood (Flat Panel ONLY)">
+                </div>
+                
+                <div class="option-group">
+                    <span class="option-label">Drawer/Front type:</span>
+                    <input type="text" value="5 piece">
+                </div>
+            </div>
+        </div>
+        
+        <!-- Order Table -->
+        <table class="order-table">
+            <thead>
+                <tr>
+                    <th style="width: 40px;">#</th>
+                    <th style="width: 60px;">QTY</th>
+                    <th style="width: 100px;">Width</th>
+                    <th style="width: 100px;">Height</th>
+                    <th>Doors/Drawer Details</th>
+                    <th>Additional Notes</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Rows 1-64 -->
+                <tr>
+                    <td class="row-number">1</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">2</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">3</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">4</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">5</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">6</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">7</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">8</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">9</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">10</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">11</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">12</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">13</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">14</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">15</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">16</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">17</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">18</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">19</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">20</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">21</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">22</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">23</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">24</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">25</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">26</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">27</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">28</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">29</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">30</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">31</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">32</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">33</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">34</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">35</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">36</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">37</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">38</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">39</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">40</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">41</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">42</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">43</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">44</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">45</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">46</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">47</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">48</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">49</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">50</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">51</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">52</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">53</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">54</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">55</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">56</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">57</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">58</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">59</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">60</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">61</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">62</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">63</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td class="row-number">64</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+            </tbody>
+        </table>
+        
+        <!-- Submit Section -->
+        <div class="submit-section">
+            <button class="submit-btn" onclick="submitForm()">SUBMIT</button>
+            <div class="submit-note">
+                (Submit button ONLY works for OUTLOOK users. Any other email users will have to attach this form upon sending to: <strong>fernando@theraisedpaneldoor.com</strong> we apologize for the inconvenience but thank you for your business!)
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        function submitForm() {
+            // Get form values
+            const date = document.querySelector('input[type="text"]').value;
+            const jobName = document.querySelectorAll('input[type="text"]')[1].value;
+            
+            // Collect customer info
+            const customerInfo = {
+                name: document.querySelectorAll('.info-value input')[0].value,
+                address: document.querySelectorAll('.info-value input')[1].value,
+                phone: document.querySelectorAll('.info-value input')[2].value,
+                email: document.querySelectorAll('.info-value input')[3].value
+            };
+            
+            // Create email body
+            let emailBody = `Order Form Submission\n\n`;
+            emailBody += `Date: ${date}\n`;
+            emailBody += `Job Name: ${jobName}\n\n`;
+            emailBody += `Customer Information:\n`;
+            emailBody += `Name: ${customerInfo.name}\n`;
+            emailBody += `Address: ${customerInfo.address}\n`;
+            emailBody += `Phone: ${customerInfo.phone}\n`;
+            emailBody += `Email: ${customerInfo.email}\n`;
+            
+            // Create mailto link
+            const subject = encodeURIComponent('Door Order Form Submission');
+            const body = encodeURIComponent(emailBody);
+            const mailtoLink = `mailto:fernando@theraisedpaneldoor.com?subject=${subject}&body=${body}`;
+            
+            // Open email client
+            window.location.href = mailtoLink;
+        }
+        
+        // Make table cells editable
+        document.querySelectorAll('.order-table td:not(.row-number)').forEach(cell => {
+            cell.contentEditable = true;
+            cell.addEventListener('focus', function() {
+                this.style.background = '#ffffcc';
+            });
+            cell.addEventListener('blur', function() {
+                this.style.background = '';
+            });
+        });
+    </script>
+</body>
+</html>

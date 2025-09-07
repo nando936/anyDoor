@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Standard Door List - Paul Revere Job 302</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            margin: 20px; 
+            background: white;
+            font-size: 12px;
+        }
+        .header { 
+            border: 2px solid #333;
+            padding: 15px; 
+            margin-bottom: 20px; 
+        }
+        .header-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 15px;
+        }
+        .header-info {
+            flex: 1;
+        }
+        .header h1 {
+            color: #333;
+            margin: 0 0 10px 0;
+            font-size: 24px;
+        }
+        .door-pictures { 
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            border: 2px solid #20b2aa; 
+            padding: 10px;
+            background: #f9f9f9;
+        }
+        .door-pictures img { 
+            max-height: 150px; 
+            border: 1px solid #ccc; 
+            box-shadow: 2px 2px 5px rgba(0,0,0,0.2);
+        }
+        .info-row {
+            display: flex;
+            gap: 30px;
+            margin: 5px 0;
+        }
+        .info-row span {
+            display: inline-block;
+        }
+        .info-label {
+            font-weight: bold;
+            min-width: 100px;
+        }
+        
+        /* Line item table styles */
+        .line-items-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        .line-items-table th {
+            background: #333;
+            color: white;
+            padding: 8px;
+            text-align: left;
+            font-size: 11px;
+            font-weight: bold;
+        }
+        .line-items-table td {
+            border: 1px solid #ccc;
+            padding: 6px;
+            vertical-align: top;
+        }
+        .line-items-table tr:nth-child(even) {
+            background: #f9f9f9;
+        }
+        .editable { 
+            background: transparent;
+            border: none;
+            width: 100%;
+            padding: 2px;
+        }
+        .editable:focus {
+            background: #ffffcc;
+            outline: 1px dashed #999;
+        }
+        .special-note {
+            color: #cc0000;
+            font-weight: bold;
+        }
+        
+        /* Print styles */
+        @media print {
+            body { margin: 10px; }
+            .editable:focus { outline: none; background: transparent; }
+            .line-items-table { page-break-inside: avoid; }
+        }
+        
+        /* Summary section */
+        .summary {
+            margin-top: 20px;
+            padding: 10px;
+            background: #f0f0f0;
+            border: 1px solid #999;
+        }
+        .summary-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 5px 0;
+        }
+        
+        .instructions {
+            margin-top: 20px;
+            padding: 10px;
+            background: #ffffcc;
+            border: 1px solid #ff9900;
+            font-size: 11px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-top">
+            <div class="header-info">
+                <h1>STANDARD DOOR LIST</h1>
+                <div class="info-row">
+                    <span class="info-label">Customer:</span>
+                    <span>Paul Revere</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Job Name:</span>
+                    <span>Paul Revere Kitchen Remodel</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Job Number:</span>
+                    <span>302</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Date:</span>
+                    <span>1/7/2025</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Door Style:</span>
+                    <span>#302</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Wood Species:</span>
+                    <span>White Oak</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Overlay:</span>
+                    <span>1/2" Overlay</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Hinge Type:</span>
+                    <span>Blum Soft Close Frameless 1/2"OL</span>
+                </div>
+            </div>
+            <div class="door-pictures">
+                <img src="../door pictures/302 door pic.JPG" alt="Door Style 302" 
+                     onerror="this.style.display='none'">
+                <img src="../door pictures/302 door profile.JPG" alt="Door Profile 302" 
+                     onerror="this.style.display='none'">
+            </div>
+        </div>
+    </div>
+    
+    <table class="line-items-table">
+        <thead>
+            <tr>
+                <th width="8%">Line #</th>
+                <th width="8%">Cabinet #</th>
+                <th width="8%">Qty</th>
+                <th width="12%">Width</th>
+                <th width="12%">Height</th>
+                <th width="10%">Type</th>
+                <th width="12%">Material</th>
+                <th width="8%">Style</th>
+                <th width="22%">Notes</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>1</td>
+                <td>#1</td>
+                <td><input class="editable" value="2" contenteditable="true"></td>
+                <td><input class="editable" value="14 3/8" contenteditable="true"></td>
+                <td><input class="editable" value="24 3/4" contenteditable="true"></td>
+                <td><input class="editable" value="door" contenteditable="true"></td>
+                <td><input class="editable" value="White Oak" contenteditable="true"></td>
+                <td><input class="editable" value="302" contenteditable="true"></td>
+                <td><input class="editable" value="" contenteditable="true"></td>
+            </tr>
+            <tr>
+                <td>2</td>
+                <td>#2</td>
+                <td><input class="editable" value="2" contenteditable="true"></td>
+                <td><input class="editable" value="14 7/16" contenteditable="true"></td>
+                <td><input class="editable" value="24 3/4" contenteditable="true"></td>
+                <td><input class="editable" value="door" contenteditable="true"></td>
+                <td><input class="editable" value="White Oak" contenteditable="true"></td>
+                <td><input class="editable" value="302" contenteditable="true"></td>
+                <td><input class="editable" value="" contenteditable="true"></td>
+            </tr>
+            <tr>
+                <td>3</td>
+                <td>#3</td>
+                <td><input class="editable" value="2" contenteditable="true"></td>
+                <td><input class="editable" value="14 3/4" contenteditable="true"></td>
+                <td><input class="editable" value="24 3/4" contenteditable="true"></td>
+                <td><input class="editable" value="door" contenteditable="true"></td>
+                <td><input class="editable" value="White Oak" contenteditable="true"></td>
+                <td><input class="editable" value="302" contenteditable="true"></td>
+                <td><input class="editable" value="" contenteditable="true"></td>
+            </tr>
+            <tr>
+                <td>4</td>
+                <td>#4</td>
+                <td><input class="editable" value="1" contenteditable="true"></td>
+                <td><input class="editable" value="13 3/4" contenteditable="true"></td>
+                <td><input class="editable" value="24 3/4" contenteditable="true"></td>
+                <td><input class="editable" value="door" contenteditable="true"></td>
+                <td><input class="editable" value="White Oak" contenteditable="true"></td>
+                <td><input class="editable" value="302" contenteditable="true"></td>
+                <td><input class="editable special-note" value="Do not bore - trash drawer" contenteditable="true"></td>
+            </tr>
+            <tr>
+                <td>5</td>
+                <td>#5</td>
+                <td><input class="editable" value="2" contenteditable="true"></td>
+                <td><input class="editable" value="14 3/4" contenteditable="true"></td>
+                <td><input class="editable" value="24 3/4" contenteditable="true"></td>
+                <td><input class="editable" value="door" contenteditable="true"></td>
+                <td><input class="editable" value="White Oak" contenteditable="true"></td>
+                <td><input class="editable" value="302" contenteditable="true"></td>
+                <td><input class="editable" value="" contenteditable="true"></td>
+            </tr>
+            <tr>
+                <td>6</td>
+                <td>#6</td>
+                <td><input class="editable" value="2" contenteditable="true"></td>
+                <td><input class="editable" value="13 13/16" contenteditable="true"></td>
+                <td><input class="editable" value="24 3/4" contenteditable="true"></td>
+                <td><input class="editable" value="door" contenteditable="true"></td>
+                <td><input class="editable" value="White Oak" contenteditable="true"></td>
+                <td><input class="editable" value="302" contenteditable="true"></td>
+                <td><input class="editable" value="" contenteditable="true"></td>
+            </tr>
+            <tr>
+                <td>7</td>
+                <td>#7</td>
+                <td><input class="editable" value="2" contenteditable="true"></td>
+                <td><input class="editable" value="16 1/2" contenteditable="true"></td>
+                <td><input class="editable" value="41 7/8" contenteditable="true"></td>
+                <td><input class="editable" value="door" contenteditable="true"></td>
+                <td><input class="editable" value="White Oak" contenteditable="true"></td>
+                <td><input class="editable" value="302" contenteditable="true"></td>
+                <td><input class="editable" value="" contenteditable="true"></td>
+            </tr>
+            <tr>
+                <td>8</td>
+                <td>#8</td>
+                <td><input class="editable" value="2" contenteditable="true"></td>
+                <td><input class="editable" value="16 1/2" contenteditable="true"></td>
+                <td><input class="editable" value="41 7/8" contenteditable="true"></td>
+                <td><input class="editable" value="door" contenteditable="true"></td>
+                <td><input class="editable" value="White Oak" contenteditable="true"></td>
+                <td><input class="editable" value="302" contenteditable="true"></td>
+                <td><input class="editable" value="" contenteditable="true"></td>
+            </tr>
+            <!-- Add more empty rows for additional items -->
+            <tr>
+                <td>9</td>
+                <td>#9</td>
+                <td><input class="editable" value="" contenteditable="true"></td>
+                <td><input class="editable" value="" contenteditable="true"></td>
+                <td><input class="editable" value="" contenteditable="true"></td>
+                <td><input class="editable" value="" contenteditable="true"></td>
+                <td><input class="editable" value="" contenteditable="true"></td>
+                <td><input class="editable" value="" contenteditable="true"></td>
+                <td><input class="editable" value="" contenteditable="true"></td>
+            </tr>
+            <tr>
+                <td>10</td>
+                <td>#10</td>
+                <td><input class="editable" value="" contenteditable="true"></td>
+                <td><input class="editable" value="" contenteditable="true"></td>
+                <td><input class="editable" value="" contenteditable="true"></td>
+                <td><input class="editable" value="" contenteditable="true"></td>
+                <td><input class="editable" value="" contenteditable="true"></td>
+                <td><input class="editable" value="" contenteditable="true"></td>
+                <td><input class="editable" value="" contenteditable="true"></td>
+            </tr>
+        </tbody>
+    </table>
+    
+    <div class="summary">
+        <h3>Summary</h3>
+        <div class="summary-row">
+            <span><strong>Total Doors:</strong> 15</span>
+            <span><strong>Total Drawers:</strong> 0</span>
+            <span><strong>Total Hinges Required:</strong> 30 (2 per door)</span>
+        </div>
+        <div class="summary-row">
+            <span><strong>Material:</strong> White Oak</span>
+            <span><strong>Door Style:</strong> #302</span>
+            <span><strong>Panel Cut:</strong> 3/8" Plywood (Flat Panel ONLY)</span>
+        </div>
+    </div>
+    
+    <div class="instructions">
+        <p><strong>Instructions:</strong></p>
+        <ul style="margin: 5px 0; padding-left: 20px;">
+            <li>Click any field in the table to edit</li>
+            <li>Line numbers automatically become Cabinet numbers in all reports</li>
+            <li>Special notes for specific line items must stay with that line</li>
+            <li>Save as HTML to preserve edits</li>
+            <li>Convert to PDF using Selenium script when finalized</li>
+        </ul>
+    </div>
+    
+    <script>
+        // Auto-calculate totals
+        function calculateTotals() {
+            let totalDoors = 0;
+            let totalDrawers = 0;
+            
+            document.querySelectorAll('.line-items-table tbody tr').forEach(row => {
+                const qty = parseInt(row.cells[2].querySelector('input').value) || 0;
+                const type = row.cells[5].querySelector('input').value.toLowerCase();
+                
+                if (type === 'door') {
+                    totalDoors += qty;
+                } else if (type === 'drawer') {
+                    totalDrawers += qty;
+                }
+            });
+            
+            // Update summary
+            const summaryDiv = document.querySelector('.summary');
+            if (summaryDiv) {
+                summaryDiv.innerHTML = `
+                    <h3>Summary</h3>
+                    <div class="summary-row">
+                        <span><strong>Total Doors:</strong> ${totalDoors}</span>
+                        <span><strong>Total Drawers:</strong> ${totalDrawers}</span>
+                        <span><strong>Total Hinges Required:</strong> ${totalDoors * 2} (2 per door)</span>
+                    </div>
+                    <div class="summary-row">
+                        <span><strong>Material:</strong> White Oak</span>
+                        <span><strong>Door Style:</strong> #302</span>
+                        <span><strong>Panel Cut:</strong> 3/8" Plywood (Flat Panel ONLY)</span>
+                    </div>
+                `;
+            }
+        }
+        
+        // Add event listeners to all editable fields
+        document.querySelectorAll('.editable').forEach(input => {
+            input.addEventListener('input', calculateTotals);
+            input.addEventListener('blur', () => {
+                // Save to localStorage
+                const data = [];
+                document.querySelectorAll('.line-items-table tbody tr').forEach((row, index) => {
+                    const cells = row.querySelectorAll('input');
+                    data.push({
+                        line: index + 1,
+                        qty: cells[0].value,
+                        width: cells[1].value,
+                        height: cells[2].value,
+                        type: cells[3].value,
+                        material: cells[4].value,
+                        style: cells[5].value,
+                        notes: cells[6].value
+                    });
+                });
+                localStorage.setItem('doorList_302', JSON.stringify(data));
+                console.log('Data saved:', new Date().toLocaleString());
+            });
+        });
+        
+        // Load saved data on page load
+        window.addEventListener('load', () => {
+            const saved = localStorage.getItem('doorList_302');
+            if (saved) {
+                try {
+                    const data = JSON.parse(saved);
+                    // Populate table with saved data
+                    // (implementation depends on exact structure)
+                } catch (e) {
+                    console.log('No saved data found');
+                }
+            }
+            calculateTotals();
+        });
+    </script>
+</body>
+</html>

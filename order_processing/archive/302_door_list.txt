@@ -1,0 +1,83 @@
+DOOR LIST - Paul Revere (302)
+Date: 17 August 2017
+Customer: SUAREZ CARPENTRY, INC.
+============================================================
+
+Cabinet #1:
+  - 1 false front @ 28 7/8" x 5 3/8"
+  - 2 doors @ 14 3/8" x 24 3/4"
+
+Cabinet #2:
+  - 1 drawer front @ 29" x 5 3/8"
+  - 2 doors @ 14 7/16" x 24 3/4"
+
+Cabinet #3:
+  - 1 drawer front @ 15 3/4" x 12 3/8"
+  - 1 drawer front @ 15 3/4" x 12 1/4"
+  - 1 drawer front @ 15 3/4" x 5 3/8"
+
+Cabinet #4:
+  - 1 false front @ 29 5/8" x 5 3/8"
+  - 2 doors @ 14 3/4" x 24 3/4"
+
+Cabinet #5:
+  - 1 drawer front @ 13 3/4" x 12 3/8"
+  - 1 drawer front @ 13 3/4" x 12 1/4"
+  - 1 drawer front @ 13 3/4" x 5 3/8"
+
+Cabinet #6:
+  - 1 false front @ 27 5/8" x 5 3/8"
+  - 2 doors @ 13 3/4" x 24 3/4"
+
+Cabinet #7:
+  - 1 false front @ 29 5/8" x 5 3/8"
+  - 2 doors @ 14 3/4" x 24 3/4"
+
+Cabinet #8:
+  - 1 drawer front @ 17 3/4" x 12 3/8"
+  - 1 drawer front @ 17 3/4" x 12 1/4"
+  - 1 drawer front @ 17 3/4" x 5 3/8"
+
+Cabinet #9:
+  - 1 drawer front @ 13 3/4" x 12 3/8"
+  - 1 drawer front @ 13 3/4" x 12 1/4"
+  - 1 drawer front @ 13 3/4" x 5 3/8"
+
+Cabinet #10:
+  - 1 false front @ 27 3/4" x 5 3/8"
+  - 2 doors @ 13 13/16" x 24 3/4"
+
+Cabinet #11:
+  - 2 drawer fronts @ 16 5/8" x 10 5/16"
+  - 1 drawer front @ 16 5/8" x 5 3/8"
+
+Cabinet #12:
+  - 1 drawer front @ 27 3/4" x 4 1/4"
+
+Cabinet #13:
+  - 2 drawer fronts @ 16 5/8" x 10 5/16"
+  - 1 drawer front @ 16 5/8" x 5 3/8"
+
+Cabinet #14:
+  - 1 drawer front @ 27 5/8" x 4 1/4"
+
+Cabinet #15:
+  - 2 drawer fronts @ 16 5/8" x 10 5/16"
+  - 1 drawer front @ 16 5/8" x 5 3/8"
+
+Cabinet #16:
+  - 1 drawer front @ 27 5/8" x 4 1/4"
+
+Cabinet #23:
+  - 2 doors @ 16 1/2" x 41 7/8"
+
+Cabinet #24:
+  - 2 doors @ 16 1/2" x 41 7/8"
+
+============================================================
+TOTALS:
+- Doors: 16
+- Drawer Fronts: 25
+- False Fronts: 5
+- Total Pieces: 46
+- Hinges Required: 32 (2 per door)
