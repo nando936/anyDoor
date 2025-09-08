@@ -1,0 +1,20 @@
+# AnyDoor Comments File
+
+### Project: AnyDoor
+### Description: Door monitoring and control project
+### Created: September 8, 2025
+
+### Commands:
+- `*` - Read and process comments from this file
+- Add other project-specific commands here
+
+### Recent Updates:
+- Comments system initialized
+
+---
+
+### nando Comment (Webpage) - 20:35
+I have some planning question about a featureni want
+
+### nando Comment (Webpage) - 20:37
+Answer me in comments.. can u build an optimisernfor cutting sheet materias? Im planning dont implement

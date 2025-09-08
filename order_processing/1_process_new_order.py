@@ -31,6 +31,7 @@ from selenium.webdriver.chrome.options import Options
 import time
 from datetime import datetime
 import shutil
+from panel_optimizer import PanelOptimizer, Panel
 
 # Set encoding for Windows
 sys.stdout.reconfigure(encoding='utf-8')
@@ -1088,6 +1089,281 @@ def move_to_processed(pdf_path=None):
             return False
     return False
 
+def generate_panel_optimizer_html(customer_info, door_items, door_style, door_specs=None):
+    """Generate panel optimizer report HTML"""
+    
+    # Extract panels from door items
+    panels = []
+    for item in door_items:
+        cabinet = item.get('cabinet', '#?')
+        qty = int(item.get('qty', 1))
+        
+        # Parse door size - check for combined 'size' field or separate width/height
+        if 'size' in item and item['size']:
+            size_parts = item.get('size', '').split('x')
+            if len(size_parts) == 2:
+                width_str = size_parts[0].strip()
+                height_str = size_parts[1].strip()
+            else:
+                continue
+        elif 'width' in item and 'height' in item:
+            width_str = item['width']
+            height_str = item['height']
+        else:
+            continue
+            
+        # Convert to decimal
+        width = fraction_to_decimal(width_str)
+        height = fraction_to_decimal(height_str)
+        
+        # Calculate panel dimensions (accounting for frame)
+        stile_width = 3.0  # Default
+        if door_specs and door_specs.get('stile_rail_width'):
+            stile_width = float(door_specs['stile_rail_width'])
+        
+        # Panel is door size minus frame (2 stiles, 2 rails)
+        panel_width = width - (2 * stile_width) + 0.5  # Add 0.5" for tongue
+        panel_height = height - (2 * stile_width) + 0.5  # Add 0.5" for tongue
+        
+        # Determine material
+        notes = item.get('notes', '').lower()
+        material = "Paint Grade MDF" if 'paint grade' in notes else "Wood"
+        
+        # Add panels based on quantity
+        for i in range(qty):
+            panels.append(Panel(
+                cabinet=f"{cabinet}",
+                width=panel_width,
+                height=panel_height,
+                material=material,
+                grain_direction="vertical"
+            ))
+    
+    # Run optimization
+    optimizer = PanelOptimizer()
+    sheets = optimizer.optimize(panels)
+    
+    # Generate HTML report
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Panel Optimization Report - {customer_info['name']}</title>
+    <style>
+        @page {{
+            size: letter portrait;
+            margin: 0.5in;
+        }}
+        
+        body {{
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            font-size: 12px;
+        }}
+        
+        .header {{
+            margin-bottom: 30px;
+            border-bottom: 2px solid #333;
+            padding-bottom: 15px;
+        }}
+        
+        h1 {{
+            margin: 0;
+            font-size: 24px;
+        }}
+        
+        .customer-info {{
+            display: flex;
+            justify-content: space-between;
+            margin-top: 15px;
+        }}
+        
+        .sheet-page {{
+            page-break-after: always;
+            min-height: 9in;
+        }}
+        
+        .sheet-page:last-child {{
+            page-break-after: auto;
+        }}
+        
+        .sheet-header {{
+            background: #f0f0f0;
+            padding: 10px;
+            margin-bottom: 20px;
+            border: 1px solid #ccc;
+        }}
+        
+        .diagram-container {{
+            text-align: center;
+            margin: 20px auto;
+            max-width: 7.5in;
+        }}
+        
+        .diagram-container svg {{
+            width: 100%;
+            height: auto;
+        }}
+        
+        .cutting-instructions {{
+            margin-top: 30px;
+            padding: 15px;
+            background: #f9f9f9;
+            border: 1px solid #ddd;
+        }}
+        
+        .cutting-instructions h3 {{
+            margin-top: 0;
+            font-size: 16px;
+        }}
+        
+        .cutting-instructions ol {{
+            margin: 10px 0;
+            padding-left: 30px;
+        }}
+        
+        .cutting-instructions li {{
+            margin: 5px 0;
+            line-height: 1.5;
+        }}
+        
+        .panel-list {{
+            margin-top: 20px;
+        }}
+        
+        .panel-list ul {{
+            list-style: none;
+            padding: 0;
+        }}
+        
+        .panel-list li {{
+            padding: 5px;
+            background: #fff;
+            margin: 3px 0;
+            border-left: 3px solid #333;
+            padding-left: 10px;
+        }}
+        
+        .summary {{
+            margin-top: 30px;
+            padding: 15px;
+            background: #e8f4f8;
+            border: 1px solid #b0d4e3;
+        }}
+        
+        .footer {{
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #ccc;
+            text-align: center;
+            font-size: 12px;
+            color: #666;
+        }}
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Panel Optimization Report</h1>
+        <div class="customer-info">
+            <div>
+                <strong>Customer:</strong> {customer_info['name']}<br>
+                <strong>Job:</strong> {customer_info.get('job', 'N/A')}<br>
+                <strong>Door Style:</strong> {door_style}
+            </div>
+            <div style="text-align: right;">
+                <strong>Date:</strong> {datetime.now().strftime('%Y-%m-%d')}<br>
+                <strong>Phone:</strong> {customer_info.get('phone', 'N/A')}<br>
+                <strong>Total Panels:</strong> {len(panels)}
+            </div>
+        </div>
+    </div>
+"""
+    
+    # Add each sheet as a separate page
+    for i, sheet in enumerate(sheets, 1):
+        # Generate SVG diagram for this sheet
+        svg_diagram = optimizer.generate_svg_diagram(sheet)
+        
+        # Generate cutting instructions
+        instructions = optimizer.generate_cutting_instructions(sheet)
+        
+        html += f"""
+    <div class="sheet-page">
+        <div class="sheet-header">
+            <h2>Sheet {i} of {len(sheets)}</h2>
+            <strong>Material:</strong> {sheet.material} | 
+            <strong>Size:</strong> {sheet.width}" x {sheet.height}" | 
+            <strong>Panels:</strong> {len(sheet.panels)} | 
+            <strong>Efficiency:</strong> {sheet.efficiency:.1f}%
+        </div>
+        
+        <div class="diagram-container">
+            {svg_diagram}
+        </div>
+        
+        <div class="cutting-instructions">
+            <h3>Cutting Instructions</h3>
+            <ol>
+"""
+        
+        for instruction in instructions:
+            html += f"                <li>{instruction}</li>\n"
+        
+        html += """            </ol>
+        </div>
+        
+        <div class="panel-list">
+            <h3>Panels on this Sheet:</h3>
+            <ul>
+"""
+        
+        for placed_panel in sheet.panels:
+            panel = placed_panel.panel
+            html += f"""                <li>Cabinet {panel.cabinet}: {decimal_to_fraction(panel.width)}" x {decimal_to_fraction(panel.height)}" ({panel.grain_direction})</li>\n"""
+        
+        html += """            </ul>
+        </div>
+    </div>
+"""
+    
+    # Add summary at the end
+    total_sheets_by_material = {}
+    total_area_used = 0
+    total_area_available = 0
+    
+    for sheet in sheets:
+        if sheet.material not in total_sheets_by_material:
+            total_sheets_by_material[sheet.material] = 0
+        total_sheets_by_material[sheet.material] += 1
+        total_area_used += sheet.used_area
+        total_area_available += sheet.width * sheet.height
+    
+    overall_efficiency = (total_area_used / total_area_available * 100) if total_area_available > 0 else 0
+    
+    html += f"""
+    <div class="summary">
+        <h2>Summary</h2>
+        <p><strong>Total Sheets Required:</strong></p>
+        <ul>
+"""
+    
+    for material, count in total_sheets_by_material.items():
+        html += f"            <li>{material}: {count} sheet{'s' if count > 1 else ''}</li>\n"
+    
+    html += f"""        </ul>
+        <p><strong>Overall Efficiency:</strong> {overall_efficiency:.1f}%</p>
+        <p><strong>Total Panels:</strong> {len(panels)}</p>
+    </div>
+    
+    <div class="footer">
+        <p>anyDoor Report generated: {datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")}</p>
+    </div>
+</body>
+</html>"""
+    
+    return html
+
 def process_order(customer_info, door_items, door_style, output_prefix, source_pdf=None):
     """Main function to process an order
     
@@ -1135,8 +1411,16 @@ def process_order(customer_info, door_items, door_style, output_prefix, source_p
         f.write(cut_list_html)
     print(f"   [OK] Created: {cut_list_file}")
     
-    # 4. Convert all to PDFs
-    print("\n4. Converting to PDFs...")
+    # 4. Generate panel optimizer
+    print("\n4. Generating Panel Optimizer Report...")
+    panel_optimizer_html = generate_panel_optimizer_html(customer_info, door_items, door_style, door_specs)
+    panel_optimizer_file = os.path.join(output_folder, "panel_optimizer.html")
+    with open(panel_optimizer_file, 'w', encoding='utf-8') as f:
+        f.write(panel_optimizer_html)
+    print(f"   [OK] Created: {panel_optimizer_file}")
+    
+    # 5. Convert all to PDFs
+    print("\n5. Converting to PDFs...")
     html_to_pdf(door_list_html, os.path.join(output_folder, "finish_door_list.pdf"))
     print(f"   [OK] Created: {os.path.join(output_folder, 'finish_door_list.pdf')}")
     
@@ -1146,8 +1430,11 @@ def process_order(customer_info, door_items, door_style, output_prefix, source_p
     html_to_pdf(cut_list_html, os.path.join(output_folder, "cut_list.pdf"))
     print(f"   [OK] Created: {os.path.join(output_folder, 'cut_list.pdf')}")
     
-    # 5. Save JSON for future reference
-    print("\n5. Saving JSON data...")
+    html_to_pdf(panel_optimizer_html, os.path.join(output_folder, "panel_optimizer.pdf"))
+    print(f"   [OK] Created: {os.path.join(output_folder, 'panel_optimizer.pdf')}")
+    
+    # 6. Save JSON for future reference
+    print("\n6. Saving JSON data...")
     json_data = {
         'customer_info': customer_info,
         'door_style': door_style,
@@ -1163,7 +1450,7 @@ def process_order(customer_info, door_items, door_style, output_prefix, source_p
     print("Order processing complete!")
     print(f"All files created in: {output_folder}/")
     
-    # 6. Move source PDF to processed folder if provided
+    # 7. Move source PDF to processed folder if provided
     if source_pdf:
         move_to_processed(source_pdf)
 

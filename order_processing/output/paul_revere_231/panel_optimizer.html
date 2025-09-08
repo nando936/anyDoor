@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Panel Optimization Report - Paul Revere</title>
+    <style>
+        @page {
+            size: letter portrait;
+            margin: 0.5in;
+        }
+        
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            font-size: 12px;
+        }
+        
+        .header {
+            margin-bottom: 30px;
+            border-bottom: 2px solid #333;
+            padding-bottom: 15px;
+        }
+        
+        h1 {
+            margin: 0;
+            font-size: 24px;
+        }
+        
+        .customer-info {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 15px;
+        }
+        
+        .sheet-page {
+            page-break-after: always;
+            min-height: 9in;
+        }
+        
+        .sheet-page:last-child {
+            page-break-after: auto;
+        }
+        
+        .sheet-header {
+            background: #f0f0f0;
+            padding: 10px;
+            margin-bottom: 20px;
+            border: 1px solid #ccc;
+        }
+        
+        .diagram-container {
+            text-align: center;
+            margin: 20px auto;
+            max-width: 7.5in;
+        }
+        
+        .diagram-container svg {
+            width: 100%;
+            height: auto;
+        }
+        
+        .cutting-instructions {
+            margin-top: 30px;
+            padding: 15px;
+            background: #f9f9f9;
+            border: 1px solid #ddd;
+        }
+        
+        .cutting-instructions h3 {
+            margin-top: 0;
+            font-size: 16px;
+        }
+        
+        .cutting-instructions ol {
+            margin: 10px 0;
+            padding-left: 30px;
+        }
+        
+        .cutting-instructions li {
+            margin: 5px 0;
+            line-height: 1.5;
+        }
+        
+        .panel-list {
+            margin-top: 20px;
+        }
+        
+        .panel-list ul {
+            list-style: none;
+            padding: 0;
+        }
+        
+        .panel-list li {
+            padding: 5px;
+            background: #fff;
+            margin: 3px 0;
+            border-left: 3px solid #333;
+            padding-left: 10px;
+        }
+        
+        .summary {
+            margin-top: 30px;
+            padding: 15px;
+            background: #e8f4f8;
+            border: 1px solid #b0d4e3;
+        }
+        
+        .footer {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #ccc;
+            text-align: center;
+            font-size: 12px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Panel Optimization Report</h1>
+        <div class="customer-info">
+            <div>
+                <strong>Customer:</strong> Paul Revere<br>
+                <strong>Job:</strong> N/A<br>
+                <strong>Door Style:</strong> 231
+            </div>
+            <div style="text-align: right;">
+                <strong>Date:</strong> 2025-09-08<br>
+                <strong>Phone:</strong> 555-1776<br>
+                <strong>Total Panels:</strong> 18
+            </div>
+        </div>
+    </div>
+
+    <div class="sheet-page">
+        <div class="sheet-header">
+            <h2>Sheet 1 of 2</h2>
+            <strong>Material:</strong> Paint Grade MDF | 
+            <strong>Size:</strong> 48.0" x 96.0" | 
+            <strong>Panels:</strong> 11 | 
+            <strong>Efficiency:</strong> 64.4%
+        </div>
+        
+        <div class="diagram-container">
+            <svg width="540.0" height="270.0" viewBox="0 0 540.0 270.0" xmlns="http://www.w3.org/2000/svg">
+        <style>
+            .sheet { fill: #f5f5f5; stroke: #333; stroke-width: 2; }
+            .panel { fill: #e8f4f8; stroke: #2196F3; stroke-width: 1.5; }
+            .grain-v { fill: url(#grainV); }
+            .grain-h { fill: url(#grainH); }
+            .label { font-family: Arial; font-size: 12px; text-anchor: middle; }
+            .dimension { font-family: Arial; font-size: 10px; fill: #666; }
+        </style>
+        
+        <!-- Define wood grain patterns -->
+        <defs>
+            <pattern id="grainV" x="0" y="0" width="4" height="10" patternUnits="userSpaceOnUse">
+                <line x1="2" y1="0" x2="2" y2="10" stroke="#d4a373" stroke-width="0.5" opacity="0.3"/>
+            </pattern>
+            <pattern id="grainH" x="0" y="0" width="10" height="4" patternUnits="userSpaceOnUse">
+                <line x1="0" y1="2" x2="10" y2="2" stroke="#d4a373" stroke-width="0.5" opacity="0.3"/>
+            </pattern>
+        </defs>
+        
+        
+        <!-- Apply rotation transform to entire sheet -->
+        <g transform="rotate(90 270.0 135.0) translate(135.0 -135.0)">
+            <!-- Sheet outline -->
+            <rect x="10" y="10" width="250.0" height="520.0" class="sheet"/>
+            
+            <!-- Panel 9 -->
+            <rect x="10.0" y="10.0" width="170.15625" height="103.359375" 
+                  class="panel grain-v"/>
+            <text x="95.078125" y="61.6796875" class="label">
+                9
+            </text>
+            <text x="95.078125" y="73.6796875" class="dimension">
+                30 1/4" x 18 3/8"
+            </text>
+            <!-- Panel 8 -->
+            <rect x="180.859375" y="10.0" width="57.65625" height="208.125" 
+                  class="panel grain-v"/>
+            <text x="209.6875" y="114.0625" class="label">
+                8
+            </text>
+            <text x="209.6875" y="126.0625" class="dimension">
+                10 1/4" x 37"
+            </text>
+            <!-- Panel 10 -->
+            <rect x="239.21875" y="10.0" width="35.859375" height="208.125" 
+                  class="panel grain-v"/>
+            <text x="257.1484375" y="114.0625" class="label">
+                10
+            </text>
+            <text x="257.1484375" y="126.0625" class="dimension">
+                6 3/8" x 37"
+            </text>
+            <!-- Panel 4 -->
+            <rect x="10.0" y="218.828125" width="103.359375" height="140.625" 
+                  class="panel grain-v"/>
+            <text x="61.6796875" y="289.140625" class="label">
+                4
+            </text>
+            <text x="61.6796875" y="301.140625" class="dimension">
+                18 3/8" x 25"
+            </text>
+            <!-- Panel 8 -->
+            <rect x="114.0625" y="218.828125" width="57.65625" height="208.125" 
+                  class="panel grain-v"/>
+            <text x="142.890625" y="322.890625" class="label">
+                8
+            </text>
+            <text x="142.890625" y="334.890625" class="dimension">
+                10 1/4" x 37"
+            </text>
+            <!-- Panel 7 -->
+            <rect x="172.421875" y="218.828125" width="69.609375" height="140.625" 
+                  class="panel grain-v"/>
+            <text x="207.2265625" y="289.140625" class="label">
+                7
+            </text>
+            <text x="207.2265625" y="301.140625" class="dimension">
+                12 3/8" x 25"
+            </text>
+            <!-- Panel 10 -->
+            <rect x="242.734375" y="218.828125" width="35.859375" height="208.125" 
+                  class="panel grain-v"/>
+            <text x="260.6640625" y="322.890625" class="label">
+                10
+            </text>
+            <text x="260.6640625" y="334.890625" class="dimension">
+                6 3/8" x 37"
+            </text>
+            <!-- Panel 5 -->
+            <rect x="10.0" y="427.65625" width="69.609375" height="47.109375" 
+                  class="panel grain-v"/>
+            <text x="44.8046875" y="451.2109375" class="label">
+                5
+            </text>
+            <text x="44.8046875" y="463.2109375" class="dimension">
+                12 3/8" x 8 3/8"
+            </text>
+            <!-- Panel 5 -->
+            <rect x="80.3125" y="427.65625" width="69.609375" height="47.109375" 
+                  class="panel grain-v"/>
+            <text x="115.1171875" y="451.2109375" class="label">
+                5
+            </text>
+            <text x="115.1171875" y="463.2109375" class="dimension">
+                12 3/8" x 8 3/8"
+            </text>
+            <!-- Panel 6 -->
+            <rect x="150.625" y="427.65625" width="69.609375" height="47.109375" 
+                  class="panel grain-v"/>
+            <text x="185.4296875" y="451.2109375" class="label">
+                6
+            </text>
+            <text x="185.4296875" y="463.2109375" class="dimension">
+                12 3/8" x 8 3/8"
+            </text>
+            <!-- Panel 6 -->
+            <rect x="10.0" y="475.46875" width="69.609375" height="47.109375" 
+                  class="panel grain-v"/>
+            <text x="44.8046875" y="499.0234375" class="label">
+                6
+            </text>
+            <text x="44.8046875" y="511.0234375" class="dimension">
+                12 3/8" x 8 3/8"
+            </text>
+        </g>
+        
+        <!-- Sheet info (not rotated) -->
+        <text x="270.0" y="320.0" class="dimension" text-anchor="middle">
+            48.0" x 96.0" Sheet - Efficiency: 64.4%
+        </text>
+        </svg>
+        </div>
+        
+        <div class="cutting-instructions">
+            <h3>Cutting Instructions</h3>
+            <ol>
+                <li>    → Panel 9 - Cabinet #9 (30 1/4" x 18 3/8")</li>
+                <li>1. Cross-cut at 30 3/8" from left edge</li>
+                <li>    → Panel 8 - Cabinet #8 (10 1/4" x 37")</li>
+                <li>2. Cross-cut at 40 3/4" from left edge</li>
+                <li>    → Panel 10 - Cabinet #10 (6 3/8" x 37")</li>
+                <li>3. Rip at 37 1/8" from bottom edge</li>
+                <li>    → Panel 4 - Cabinet #4 (18 3/8" x 25")</li>
+                <li>4. Cross-cut at 18 1/2" from left edge</li>
+                <li>    → Panel 8 - Cabinet #8 (10 1/4" x 37")</li>
+                <li>5. Cross-cut at 28 7/8" from left edge</li>
+                <li>    → Panel 7 - Cabinet #7 (12 3/8" x 25")</li>
+                <li>6. Cross-cut at 41 3/8" from left edge</li>
+                <li>    → Panel 10 - Cabinet #10 (6 3/8" x 37")</li>
+                <li>7. Rip at 74 1/4" from bottom edge</li>
+                <li>    → Panel 5 - Cabinet #5 (12 3/8" x 8 3/8")</li>
+                <li>8. Cross-cut at 12 1/2" from left edge</li>
+                <li>    → Panel 5 - Cabinet #5 (12 3/8" x 8 3/8")</li>
+                <li>9. Cross-cut at 25" from left edge</li>
+                <li>    → Panel 6 - Cabinet #6 (12 3/8" x 8 3/8")</li>
+                <li>10. Rip at 82 3/4" from bottom edge</li>
+                <li>    → Panel 6 - Cabinet #6 (12 3/8" x 8 3/8")</li>
+                <li>
+Usable waste: Approximately 40 1/2" square</li>
+                <li>(Save for drawer bottoms or test pieces)</li>
+            </ol>
+        </div>
+        
+        <div class="panel-list">
+            <h3>Panels on this Sheet:</h3>
+            <ul>
+                <li>Cabinet 9: 30 1/4" x 18 3/8" (vertical)</li>
+                <li>Cabinet 8: 10 1/4" x 37" (vertical)</li>
+                <li>Cabinet 10: 6 3/8" x 37" (vertical)</li>
+                <li>Cabinet 4: 18 3/8" x 25" (vertical)</li>
+                <li>Cabinet 8: 10 1/4" x 37" (vertical)</li>
+                <li>Cabinet 7: 12 3/8" x 25" (vertical)</li>
+                <li>Cabinet 10: 6 3/8" x 37" (vertical)</li>
+                <li>Cabinet 5: 12 3/8" x 8 3/8" (vertical)</li>
+                <li>Cabinet 5: 12 3/8" x 8 3/8" (vertical)</li>
+                <li>Cabinet 6: 12 3/8" x 8 3/8" (vertical)</li>
+                <li>Cabinet 6: 12 3/8" x 8 3/8" (vertical)</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="sheet-page">
+        <div class="sheet-header">
+            <h2>Sheet 2 of 2</h2>
+            <strong>Material:</strong> Paint Grade MDF | 
+            <strong>Size:</strong> 48.0" x 96.0" | 
+            <strong>Panels:</strong> 7 | 
+            <strong>Efficiency:</strong> 35.9%
+        </div>
+        
+        <div class="diagram-container">
+            <svg width="540.0" height="270.0" viewBox="0 0 540.0 270.0" xmlns="http://www.w3.org/2000/svg">
+        <style>
+            .sheet { fill: #f5f5f5; stroke: #333; stroke-width: 2; }
+            .panel { fill: #e8f4f8; stroke: #2196F3; stroke-width: 1.5; }
+            .grain-v { fill: url(#grainV); }
+            .grain-h { fill: url(#grainH); }
+            .label { font-family: Arial; font-size: 12px; text-anchor: middle; }
+            .dimension { font-family: Arial; font-size: 10px; fill: #666; }
+        </style>
+        
+        <!-- Define wood grain patterns -->
+        <defs>
+            <pattern id="grainV" x="0" y="0" width="4" height="10" patternUnits="userSpaceOnUse">
+                <line x1="2" y1="0" x2="2" y2="10" stroke="#d4a373" stroke-width="0.5" opacity="0.3"/>
+            </pattern>
+            <pattern id="grainH" x="0" y="0" width="10" height="4" patternUnits="userSpaceOnUse">
+                <line x1="0" y1="2" x2="10" y2="2" stroke="#d4a373" stroke-width="0.5" opacity="0.3"/>
+            </pattern>
+        </defs>
+        
+        
+        <!-- Apply rotation transform to entire sheet -->
+        <g transform="rotate(90 270.0 135.0) translate(135.0 -135.0)">
+            <!-- Sheet outline -->
+            <rect x="10" y="10" width="250.0" height="520.0" class="sheet"/>
+            
+            <!-- Panel 7 -->
+            <rect x="10.0" y="10.0" width="69.609375" height="140.625" 
+                  class="panel grain-v"/>
+            <text x="44.8046875" y="80.3125" class="label">
+                7
+            </text>
+            <text x="44.8046875" y="92.3125" class="dimension">
+                12 3/8" x 25"
+            </text>
+            <!-- Panel 1 -->
+            <rect x="80.3125" y="10.0" width="57.65625" height="140.625" 
+                  class="panel grain-v"/>
+            <text x="109.140625" y="80.3125" class="label">
+                1
+            </text>
+            <text x="109.140625" y="92.3125" class="dimension">
+                10 1/4" x 25"
+            </text>
+            <!-- Panel 1 -->
+            <rect x="138.671875" y="10.0" width="57.65625" height="140.625" 
+                  class="panel grain-v"/>
+            <text x="167.5" y="80.3125" class="label">
+                1
+            </text>
+            <text x="167.5" y="92.3125" class="dimension">
+                10 1/4" x 25"
+            </text>
+            <!-- Panel 2 -->
+            <rect x="197.03125" y="10.0" width="57.65625" height="140.625" 
+                  class="panel grain-v"/>
+            <text x="225.859375" y="80.3125" class="label">
+                2
+            </text>
+            <text x="225.859375" y="92.3125" class="dimension">
+                10 1/4" x 25"
+            </text>
+            <!-- Panel 2 -->
+            <rect x="10.0" y="151.328125" width="57.65625" height="140.625" 
+                  class="panel grain-v"/>
+            <text x="38.828125" y="221.640625" class="label">
+                2
+            </text>
+            <text x="38.828125" y="233.640625" class="dimension">
+                10 1/4" x 25"
+            </text>
+            <!-- Panel 3 -->
+            <rect x="68.359375" y="151.328125" width="35.859375" height="140.625" 
+                  class="panel grain-v"/>
+            <text x="86.2890625" y="221.640625" class="label">
+                3
+            </text>
+            <text x="86.2890625" y="233.640625" class="dimension">
+                6 3/8" x 25"
+            </text>
+            <!-- Panel 3 -->
+            <rect x="104.921875" y="151.328125" width="35.859375" height="140.625" 
+                  class="panel grain-v"/>
+            <text x="122.8515625" y="221.640625" class="label">
+                3
+            </text>
+            <text x="122.8515625" y="233.640625" class="dimension">
+                6 3/8" x 25"
+            </text>
+        </g>
+        
+        <!-- Sheet info (not rotated) -->
+        <text x="270.0" y="320.0" class="dimension" text-anchor="middle">
+            48.0" x 96.0" Sheet - Efficiency: 35.9%
+        </text>
+        </svg>
+        </div>
+        
+        <div class="cutting-instructions">
+            <h3>Cutting Instructions</h3>
+            <ol>
+                <li>    → Panel 7 - Cabinet #7 (12 3/8" x 25")</li>
+                <li>1. Cross-cut at 12 1/2" from left edge</li>
+                <li>    → Panel 1 - Cabinet #1 (10 1/4" x 25")</li>
+                <li>2. Cross-cut at 22 7/8" from left edge</li>
+                <li>    → Panel 1 - Cabinet #1 (10 1/4" x 25")</li>
+                <li>3. Cross-cut at 33 1/4" from left edge</li>
+                <li>    → Panel 2 - Cabinet #2 (10 1/4" x 25")</li>
+                <li>4. Rip at 25 1/8" from bottom edge</li>
+                <li>    → Panel 2 - Cabinet #2 (10 1/4" x 25")</li>
+                <li>5. Cross-cut at 10 3/8" from left edge</li>
+                <li>    → Panel 3 - Cabinet #3 (6 3/8" x 25")</li>
+                <li>6. Cross-cut at 16 7/8" from left edge</li>
+                <li>    → Panel 3 - Cabinet #3 (6 3/8" x 25")</li>
+                <li>
+Usable waste: Approximately 54 3/8" square</li>
+                <li>(Save for drawer bottoms or test pieces)</li>
+            </ol>
+        </div>
+        
+        <div class="panel-list">
+            <h3>Panels on this Sheet:</h3>
+            <ul>
+                <li>Cabinet 7: 12 3/8" x 25" (vertical)</li>
+                <li>Cabinet 1: 10 1/4" x 25" (vertical)</li>
+                <li>Cabinet 1: 10 1/4" x 25" (vertical)</li>
+                <li>Cabinet 2: 10 1/4" x 25" (vertical)</li>
+                <li>Cabinet 2: 10 1/4" x 25" (vertical)</li>
+                <li>Cabinet 3: 6 3/8" x 25" (vertical)</li>
+                <li>Cabinet 3: 6 3/8" x 25" (vertical)</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="summary">
+        <h2>Summary</h2>
+        <p><strong>Total Sheets Required:</strong></p>
+        <ul>
+            <li>Paint Grade MDF: 2 sheets</li>
+        </ul>
+        <p><strong>Overall Efficiency:</strong> 50.2%</p>
+        <p><strong>Total Panels:</strong> 18</p>
+    </div>
+    
+    <div class="footer">
+        <p>anyDoor Report generated: 2025-09-08 07:12:12 AM</p>
+    </div>
+</body>
+</html>

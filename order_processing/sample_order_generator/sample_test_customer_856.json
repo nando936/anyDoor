@@ -1,0 +1,113 @@
+{
+  "customer_info": {
+    "name": "Test Customer",
+    "address": "6196 Main Street, Houston TX 77073",
+    "phone": "(780) 241-9282",
+    "email": "test.customer@example.com",
+    "job_name": "Test Kitchen Remodel",
+    "job_number": "856",
+    "date": "09/08/2025",
+    "wood_species": "White Oak",
+    "door_style": "--customer",
+    "hinge_type": "Blum Soft Close Frameless 1/2\"OL",
+    "overlay": "1/2\"",
+    "bore_prep": false,
+    "door_sizes": "finish",
+    "panel_cut": "3/8\" Plywood (Flat Panel ONLY)",
+    "outside_edge": "Standard for #--customer",
+    "inside_edge": "Standard for #--customer",
+    "drawer_type": "5 piece"
+  },
+  "door_items": [
+    {
+      "cabinet": 1,
+      "qty": 1,
+      "width": "20 3/8",
+      "height": "36 1/2",
+      "type": "door",
+      "material": "White Oak",
+      "notes": ""
+    },
+    {
+      "cabinet": 2,
+      "qty": 1,
+      "width": "17 7/8",
+      "height": "24 3/4",
+      "type": "door",
+      "material": "White Oak",
+      "notes": ""
+    },
+    {
+      "cabinet": 3,
+      "qty": 2,
+      "width": "23 3/4",
+      "height": "30 1/4",
+      "type": "door",
+      "material": "White Oak",
+      "notes": ""
+    },
+    {
+      "cabinet": 4,
+      "qty": 2,
+      "width": "15 1/2",
+      "height": "30 1/4",
+      "type": "door",
+      "material": "White Oak",
+      "notes": ""
+    },
+    {
+      "cabinet": 5,
+      "qty": 2,
+      "width": "20 3/8",
+      "height": "36 1/2",
+      "type": "door",
+      "material": "White Oak",
+      "notes": ""
+    },
+    {
+      "cabinet": 6,
+      "qty": 2,
+      "width": "17 7/8",
+      "height": "24 3/4",
+      "type": "door",
+      "material": "White Oak",
+      "notes": ""
+    },
+    {
+      "cabinet": 7,
+      "qty": 1,
+      "width": "14 3/8",
+      "height": "24 3/4",
+      "type": "door",
+      "material": "White Oak",
+      "notes": ""
+    },
+    {
+      "cabinet": 8,
+      "qty": 1,
+      "width": "11 3/4",
+      "height": "24 3/4",
+      "type": "door",
+      "material": "White Oak",
+      "notes": ""
+    },
+    {
+      "cabinet": 9,
+      "qty": 2,
+      "width": "17 7/8",
+      "height": "24 3/4",
+      "type": "door",
+      "material": "White Oak",
+      "notes": ""
+    },
+    {
+      "cabinet": 10,
+      "qty": 1,
+      "width": "23 3/4",
+      "height": "30 1/4",
+      "type": "door",
+      "material": "White Oak",
+      "notes": ""
+    }
+  ]
+}

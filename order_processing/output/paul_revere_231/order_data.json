@@ -1,22 +1,20 @@
 {
   "customer_info": {
     "name": "Paul Revere",
-    "address": "1776 Liberty Lane, Boston TX 77385",
-    "phone": "(281) 555-1775",
-    "email": "prevere@colonialcabinets.com",
-    "job_name": "Revere Kitchen Remodel",
+    "address": "123 Liberty Lane, Boston, MA 01234",
+    "phone": "555-1776",
+    "email": "paul@colonialcabinets.com",
+    "job_name": "Kitchen Remodel",
     "job_number": "231",
-    "date": "09/07/2025",
-    "wood_species": "Paint Grade, White Oak",
+    "date": "09/08/2025",
+    "wood_species": "Paint Grade",
     "door_style": "231",
-    "hinge_type": "Blum Soft Close Frameless 1/2\"OL",
-    "overlay": "1/2\"",
-    "bore_prep": false,
-    "door_sizes": "finish",
+    "hinge_type": "Blum Soft Close Full Overlay",
+    "overlay": "Full Overlay",
+    "bore_prep": true,
     "panel_cut": "3/8\" Plywood (Flat Panel ONLY)",
-    "outside_edge": "Standard for #231",
-    "inside_edge": "Standard for #231",
-    "drawer_type": "5 piece"
+    "outside_edge": "Square",
+    "inside_edge": "Quarter Round"
   },
   "door_style": "231",
   "door_items": [
@@ -24,82 +22,102 @@
       "line": 1,
       "cabinet": 1,
       "qty": 2,
-      "width": "15 3/8",
-      "height": "25 3/4",
+      "width": "15 3/4",
+      "height": "30 1/2",
       "type": "door",
       "material": "Paint Grade",
-      "notes": ""
+      "notes": "Paint Grade"
     },
     {
       "line": 2,
       "cabinet": 2,
       "qty": 2,
-      "width": "15 7/16",
-      "height": "25 3/4",
+      "width": "15 3/4",
+      "height": "30 1/2",
       "type": "door",
       "material": "Paint Grade",
-      "notes": ""
+      "notes": "Paint Grade"
     },
     {
       "line": 3,
       "cabinet": 3,
-      "qty": 1,
-      "width": "15 3/4",
-      "height": "25 3/4",
+      "qty": 2,
+      "width": "11 7/8",
+      "height": "30 1/2",
       "type": "door",
       "material": "Paint Grade",
-      "notes": "No hinge boring - trash drawer"
+      "notes": "Paint Grade"
     },
     {
       "line": 4,
-      "cabinet": 6,
-      "qty": 2,
-      "width": "14 3/4",
-      "height": "25 3/4",
+      "cabinet": 4,
+      "qty": 1,
+      "width": "23 7/8",
+      "height": "30 1/2",
       "type": "door",
       "material": "Paint Grade",
-      "notes": ""
+      "notes": "Paint Grade"
     },
     {
       "line": 5,
-      "cabinet": 7,
+      "cabinet": 5,
       "qty": 2,
-      "width": "15 3/4",
-      "height": "25 3/4",
+      "width": "17 7/8",
+      "height": "13 7/8",
       "type": "door",
       "material": "Paint Grade",
-      "notes": ""
+      "notes": "Paint Grade"
     },
     {
       "line": 6,
-      "cabinet": 10,
+      "cabinet": 6,
       "qty": 2,
-      "width": "14 13/16",
-      "height": "25 3/4",
+      "width": "17 7/8",
+      "height": "13 7/8",
       "type": "door",
-      "material": "White Oak",
-      "notes": ""
+      "material": "Paint Grade",
+      "notes": "Paint Grade"
     },
     {
       "line": 7,
-      "cabinet": 23,
+      "cabinet": 7,
       "qty": 2,
-      "width": "17 1/2",
-      "height": "42 7/8",
+      "width": "17 7/8",
+      "height": "30 1/2",
       "type": "door",
-      "material": "White Oak",
-      "notes": ""
+      "material": "Paint Grade",
+      "notes": "Paint Grade"
     },
     {
       "line": 8,
-      "cabinet": 24,
+      "cabinet": 8,
       "qty": 2,
-      "width": "17 1/2",
-      "height": "42 7/8",
+      "width": "15 3/4",
+      "height": "42 1/2",
       "type": "door",
-      "material": "White Oak",
-      "notes": ""
+      "material": "Paint Grade",
+      "notes": "Paint Grade"
+    },
+    {
+      "line": 9,
+      "cabinet": 9,
+      "qty": 1,
+      "width": "35 3/4",
+      "height": "23 7/8",
+      "type": "door",
+      "material": "Paint Grade",
+      "notes": "Paint Grade - Dishwasher Panel"
+    },
+    {
+      "line": 10,
+      "cabinet": 10,
+      "qty": 2,
+      "width": "11 7/8",
+      "height": "42 1/2",
+      "type": "door",
+      "material": "Paint Grade",
+      "notes": "Paint Grade"
     }
   ],
-  "processed_date": "2025-09-07 19:14:01"
+  "processed_date": "2025-09-08 07:12:39"
 }
