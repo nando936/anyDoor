@@ -1,0 +1,32 @@
+{
+  "profile_id": "flat_recessed",
+  "name": "Flat Recessed Panel",
+  "type": "panel",
+  "description": "Flat panel recessed into frame groove",
+  
+  "specifications": {
+    "raise_height": 0,
+    "bevel_angle": 0,
+    "recess_depth": 0.25,
+    "tongue_thickness": 0.25,
+    "edge_clearance": 0.0625
+  },
+  
+  "material_requirements": {
+    "minimum_thickness": 0.25,
+    "preferred_material": ["Plywood", "MDF", "Solid Wood"],
+    "grain_orientation": "Vertical standard"
+  },
+  
+  "tooling": {
+    "panel_raiser_bit": "Not required",
+    "shaper_cutter": "Not required",
+    "notes": "Cut to size on table saw or CNC"
+  },
+  
+  "compatible_with": {
+    "construction_methods": ["mitre_cut", "cope_and_stick"],
+    "door_styles": ["modern", "shaker", "contemporary"],
+    "minimum_door_size": "6x8"
+  }
+}

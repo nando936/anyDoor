@@ -1,0 +1,56 @@
+{
+  "schedule_id": "blum_soft_close_half_overlay",
+  "name": "Blum Soft Close Frameless 1/2\" Overlay",
+  "manufacturer": "Blum",
+  "type": "Concealed European Hinge",
+  
+  "specifications": {
+    "model": "BLUMOTION 71B3550",
+    "overlay": 0.5,
+    "opening_angle": 110,
+    "soft_close": true,
+    "cup_diameter": 35,
+    "cup_depth": 13,
+    "mounting_plate": "CLIP top BLUMOTION"
+  },
+  
+  "boring_pattern": {
+    "cup_bore": {
+      "diameter_mm": 35,
+      "depth_mm": 13,
+      "distance_from_edge_mm": 22.5,
+      "standard_setback_inches": 3
+    },
+    
+    "pilot_holes": {
+      "diameter_mm": 2.5,
+      "depth_mm": 12,
+      "spacing_mm": 48,
+      "notes": "Pre-drill for mounting screws"
+    }
+  },
+  
+  "quantity_calculation": {
+    "formula": "2_per_door_standard",
+    "height_rules": [
+      {"max_height": 36, "hinges": 2},
+      {"max_height": 48, "hinges": 3},
+      {"max_height": 60, "hinges": 4},
+      {"max_height": 72, "hinges": 5},
+      {"above": 72, "hinges": 6}
+    ]
+  },
+  
+  "installation_notes": [
+    "Use Blum drilling jig for accuracy",
+    "Check door weight against hinge capacity",
+    "Adjust after installation for perfect alignment",
+    "Do not bore trash drawer fronts"
+  ],
+  
+  "compatibility": {
+    "door_thickness_min": 0.625,
+    "door_thickness_max": 1.0,
+    "cabinet_types": ["frameless", "face_frame_with_adapter"]
+  }
+}

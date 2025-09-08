@@ -1,0 +1,58 @@
+{
+  "method_id": "cope_and_stick",
+  "name": "Cope and Stick",
+  "description": "Traditional frame and panel construction with cope and stick joinery",
+  "type": "frame_and_panel",
+  
+  "calculations": {
+    "stile": {
+      "length_formula": "door_height + oversize_length",
+      "width_formula": "base_stile_width + oversize_width",
+      "quantity": 2,
+      "oversize": {
+        "length": 0.25,
+        "width": 0.125,
+        "notes": "Extra material for trimming after assembly"
+      }
+    },
+    
+    "rail": {
+      "length_formula": "door_width - ((2 * stile_width) + (2 * stick_depth))",
+      "width_formula": "base_rail_width",
+      "quantity": 2,
+      "oversize": {
+        "length": 0,
+        "width": 0,
+        "notes": "Rails cut to exact size"
+      }
+    },
+    
+    "panel": {
+      "width_formula": "door_width - (stile_width + ((stick_depth * 2) - 0.125))",
+      "height_formula": "door_height - (stile_width + ((stick_depth * 2) - 0.125))",
+      "quantity": 1,
+      "groove_allowance": 0.125,
+      "notes": "Panel floats in groove"
+    }
+  },
+  
+  "defaults": {
+    "stick_depth": 0.5,
+    "base_stile_width": 2.375,
+    "base_rail_width": 2.25,
+    "material_thickness": 0.8125
+  },
+  
+  "assembly_notes": [
+    "Cope rails before assembly",
+    "Glue only the frame joints, not the panel",
+    "Panel must float to allow for wood movement",
+    "Square frame during glue-up"
+  ],
+  
+  "compatible_profiles": [
+    "quarter_round",
+    "ogee",
+    "bead_and_cove"
+  ]
+}

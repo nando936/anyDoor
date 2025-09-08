@@ -1,0 +1,25 @@
+{
+  "profile_id": "square",
+  "name": "Square Edge",
+  "type": "edge",
+  "description": "Square edge profile with no decoration",
+  
+  "specifications": {
+    "radius": 0,
+    "depth": 0,
+    "cutter_profile": "No special tooling required",
+    "setup_notes": "Standard square cut"
+  },
+  
+  "compatible_with": {
+    "construction_methods": ["cope_and_stick", "mitre_cut"],
+    "door_styles": ["modern", "shaker", "traditional"],
+    "panel_types": ["raised", "flat", "recessed"]
+  },
+  
+  "tooling": {
+    "router_bit": "Straight cutting bit",
+    "shaper_cutter": "Straight knives",
+    "speed_rpm": 15000
+  }
+}

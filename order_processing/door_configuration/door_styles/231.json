@@ -1,0 +1,64 @@
+{
+  "style_number": "231",
+  "style_name": "Modern Flat Panel - Mitre Cut",
+  "description": "Contemporary cabinet door with flat panel and mitre joints",
+  
+  "components": {
+    "construction_method": "mitre_cut",
+    "material_schedule": "paint_grade_standard",
+    "hardware_schedule": "blum_soft_close_half_overlay",
+    "profiles": {
+      "outside_edge": "square",
+      "inside_edge": "square",
+      "panel": "flat_recessed"
+    }
+  },
+  
+  "dimensions": {
+    "stile_width": 3.0,
+    "rail_width": 3.0,
+    "minimum_door_width": 8,
+    "minimum_door_height": 10,
+    "maximum_door_width": 30,
+    "maximum_door_height": 48
+  },
+  
+  "style_specific_overrides": {
+    "stick_depth": 0.5,
+    "stile_length_oversize": 0,
+    "stile_width_oversize": 0,
+    "material_thickness": 0.8125
+  },
+  
+  "panel_specifications": {
+    "type": "flat",
+    "material": "3/8\" Plywood",
+    "raise_height": 0,
+    "calculation_method": "mitre_cut_standard"
+  },
+  
+  "production_notes": [
+    "All pieces cut to exact finished size",
+    "45-degree mitres on all corners",
+    "Use splines for joint reinforcement",
+    "Flat panel - no raising required"
+  ],
+  
+  "pictures": {
+    "door_pic": "231 door pic.JPG",
+    "profile_pic": "231 door profile.JPG",
+    "hinge_pic": "Blum half inche overlay hinge.JPG"
+  },
+  
+  "available_materials": [
+    "paint_grade_standard",
+    "stain_grade_maple",
+    "white_oak"
+  ],
+  
+  "metadata": {
+    "created_date": "2025-01-08",
+    "version": "1.0",
+    "legacy_spec_file": "231 specs.txt"
+  }
+}

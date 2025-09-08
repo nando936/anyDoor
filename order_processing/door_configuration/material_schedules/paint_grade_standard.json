@@ -1,0 +1,44 @@
+{
+  "schedule_id": "paint_grade_standard",
+  "name": "Paint Grade Standard",
+  "description": "Standard paint-grade materials for cabinet doors",
+  
+  "components": {
+    "stiles_and_rails": {
+      "material": "Poplar",
+      "grade": "Paint Grade",
+      "thickness": "13/16",
+      "moisture_content": "6-8%",
+      "source_type": "lumber",
+      "purchasing_unit": "board_foot",
+      "finish_prep": "Sand to 150 grit, prime"
+    },
+    
+    "panels": {
+      "material": "MDF",
+      "thickness": "1/4",
+      "type": "Raised Panel",
+      "source_type": "sheet",
+      "sheet_size": "4x8",
+      "purchasing_unit": "sheet",
+      "finish_prep": "Prime all surfaces"
+    },
+    
+    "edge_banding": {
+      "material": "None required",
+      "notes": "Painted edges"
+    }
+  },
+  
+  "finish_requirements": {
+    "primer": "High-build primer required",
+    "paint": "Two coats minimum",
+    "sheen": "Customer specified"
+  },
+  
+  "cost_factors": {
+    "material_cost": "economy",
+    "waste_factor": 1.15,
+    "notes": "Most economical option for painted doors"
+  }
+}

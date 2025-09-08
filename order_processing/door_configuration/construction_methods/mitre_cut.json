@@ -1,0 +1,59 @@
+{
+  "method_id": "mitre_cut",
+  "name": "Mitre Cut",
+  "description": "Frame and panel construction with 45-degree mitre joints",
+  "type": "frame_and_panel",
+  
+  "calculations": {
+    "stile": {
+      "length_formula": "door_height",
+      "width_formula": "base_stile_width",
+      "quantity": 2,
+      "oversize": {
+        "length": 0,
+        "width": 0,
+        "notes": "Cut to exact finished dimensions"
+      }
+    },
+    
+    "rail": {
+      "length_formula": "door_width",
+      "width_formula": "base_rail_width",
+      "quantity": 2,
+      "oversize": {
+        "length": 0,
+        "width": 0,
+        "notes": "Cut to exact finished dimensions"
+      }
+    },
+    
+    "panel": {
+      "width_formula": "door_width - (2 * stile_width) + (stick_depth - 0.125)",
+      "height_formula": "door_height - (2 * rail_width) + (stick_depth - 0.125)",
+      "quantity": 1,
+      "groove_allowance": 0.125,
+      "notes": "Panel sized for groove depth minus clearance"
+    }
+  },
+  
+  "defaults": {
+    "stick_depth": 0.5,
+    "base_stile_width": 3.0,
+    "base_rail_width": 3.0,
+    "material_thickness": 0.8125
+  },
+  
+  "assembly_notes": [
+    "Cut precise 45-degree mitres on all frame pieces",
+    "Use splines or biscuits for joint strength",
+    "Panel must float to allow for wood movement",
+    "Check for square before glue sets"
+  ],
+  
+  "compatible_profiles": [
+    "square",
+    "quarter_round",
+    "chamfer",
+    "ogee"
+  ]
+}

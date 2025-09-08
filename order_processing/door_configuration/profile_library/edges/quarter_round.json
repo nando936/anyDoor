@@ -1,0 +1,25 @@
+{
+  "profile_id": "quarter_round",
+  "name": "Quarter Round",
+  "type": "inside_edge",
+  "description": "Classic quarter-round profile for inside edge (sticking)",
+  
+  "specifications": {
+    "radius": 0.25,
+    "depth": 0.5,
+    "cutter_profile": "Quarter round bit with bearing",
+    "setup_notes": "Run after cope cuts"
+  },
+  
+  "compatible_with": {
+    "construction_methods": ["cope_and_stick"],
+    "door_styles": ["traditional", "transitional"],
+    "panel_types": ["raised", "flat"]
+  },
+  
+  "tooling": {
+    "router_bit": "1/4\" radius roundover with bearing",
+    "shaper_cutter": "Quarter round stick cutter set",
+    "speed_rpm": 12000
+  }
+}

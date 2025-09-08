@@ -1,0 +1,63 @@
+{
+  "style_number": "103",
+  "style_name": "Traditional Raised Panel - Cope & Stick",
+  "description": "Classic cabinet door with raised panel and decorative inside edge",
+  
+  "components": {
+    "construction_method": "cope_and_stick",
+    "material_schedule": "paint_grade_standard",
+    "hardware_schedule": "blum_soft_close_half_overlay",
+    "profiles": {
+      "outside_edge": "square",
+      "inside_edge": "quarter_round",
+      "panel": "raised_standard"
+    }
+  },
+  
+  "dimensions": {
+    "stile_width": 2.375,
+    "rail_width": 2.25,
+    "minimum_door_width": 8,
+    "minimum_door_height": 10,
+    "maximum_door_width": 24,
+    "maximum_door_height": 48
+  },
+  
+  "style_specific_overrides": {
+    "stick_depth": 0.5,
+    "stile_length_oversize": 0.25,
+    "stile_width_oversize": 0.125,
+    "material_thickness": 0.8125
+  },
+  
+  "panel_specifications": {
+    "type": "raised",
+    "material": "1/4\" MDF",
+    "raise_height": 0.375,
+    "calculation_method": "cope_and_stick_standard"
+  },
+  
+  "production_notes": [
+    "Stiles cut 1/4\" longer for trimming",
+    "Stiles cut 1/8\" wider for trimming", 
+    "Rails cope before sticking",
+    "Prime all MDF edges before assembly"
+  ],
+  
+  "pictures": {
+    "door_pic": "103 door pic.JPG",
+    "profile_pic": "103 door profile.JPG",
+    "hinge_pic": "Blum half inche overlay hinge.JPG"
+  },
+  
+  "available_materials": [
+    "paint_grade_standard",
+    "stain_grade_maple"
+  ],
+  
+  "metadata": {
+    "created_date": "2025-01-08",
+    "version": "1.0",
+    "legacy_spec_file": "103 specs.txt"
+  }
+}
