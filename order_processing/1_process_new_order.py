@@ -314,6 +314,25 @@ def decimal_to_fraction(decimal):
     else:
         return closest[1]
 
+def calculate_panel_sheets(panels, sheet_width=48, sheet_height=96):
+    """Calculate how many 4x8 sheets are needed for panels using a simple packing algorithm"""
+    if not panels:
+        return 0
+    
+    # Simple area-based calculation with waste factor
+    # Calculate total area needed
+    total_area = sum(p['width'] * p['height'] for p in panels)
+    sheet_area = sheet_width * sheet_height
+    
+    # Calculate minimum sheets needed based on area
+    min_sheets = total_area / sheet_area
+    
+    # Add 15% waste factor and round up
+    sheets_with_waste = min_sheets * 1.15
+    
+    # Return at least 1 sheet if there are panels
+    return max(1, int(sheets_with_waste + 0.999))  # Round up
+
 def generate_shop_report_html(customer_info, door_items, door_style, door_specs=None):
     """Generate shop report HTML with specifications"""
     
@@ -321,18 +340,25 @@ def generate_shop_report_html(customer_info, door_items, door_style, door_specs=
     stile_width = "3"  # Default from 231 specs
     material_thickness = "13/16"  # Default from 231 specs
     is_cope_and_stick = False
+    is_mitre_cut = True  # Default is mitre cut
     stile_length_oversize = 0  # Extra length for stiles
     stile_width_oversize = 0   # Extra width for stiles
+    sticking = 0.5  # Default sticking depth
     
     if door_specs and door_specs.get('raw_text'):
         # Parse from specs text
         specs_text = door_specs['raw_text'].lower()
         
-        # Check if it's cope and stick
+        # Check if it's cope and stick or mitre cut
         if 'cope and stick' in specs_text:
             is_cope_and_stick = True
-            # Look for oversize requirements
-            if 'stile is cut' in specs_text:
+            is_mitre_cut = False
+        elif 'mitre cut' in specs_text:
+            is_mitre_cut = True
+            is_cope_and_stick = False
+        
+        # Look for oversize requirements (for cope and stick)
+        if is_cope_and_stick and 'stile is cut' in specs_text:
                 # Extract oversize amounts (e.g., "1/4 longer and 1/8 wider")
                 import re
                 length_match = re.search(r'(\d+/\d+) longer', specs_text)
@@ -363,7 +389,8 @@ def generate_shop_report_html(customer_info, door_items, door_style, door_specs=
             materials_by_species[species] = {
                 'doors': 0,
                 'drawers': 0,
-                'linear_inches': 0
+                'linear_inches': 0,
+                'panels': []  # Store panel dimensions for sheet calculation
             }
         
         if item['type'] == 'door':
@@ -393,6 +420,25 @@ def generate_shop_report_html(customer_info, door_items, door_style, door_specs=
             else:
                 # Mitre cut doors: stiles and rails are exact dimensions
                 materials_by_species[species]['linear_inches'] += qty * 2 * (width + height)
+            
+            # Calculate panel dimensions for sheet calculation
+            if item['type'] == 'door':  # Each door has a panel
+                if is_mitre_cut:
+                    # For mitre cut: panel size = finish size - width + (sticking - 1/8)
+                    panel_width = width - (2 * fraction_to_decimal(stile_width)) + (sticking - 0.125)
+                    panel_height = height - (2 * fraction_to_decimal(stile_width)) + (sticking - 0.125)
+                else:
+                    # For cope and stick: different calculation
+                    stile_width_decimal = fraction_to_decimal(stile_width)
+                    panel_width = width - (stile_width_decimal + ((sticking * 2) - 0.125))
+                    panel_height = height - (stile_width_decimal + ((sticking * 2) - 0.125))
+                
+                # Add panel dimensions for each door (qty times)
+                for _ in range(qty):
+                    materials_by_species[species]['panels'].append({
+                        'width': panel_width,
+                        'height': panel_height
+                    })
     
     # Calculate total doors and drawers
     total_doors = sum(mat['doors'] for mat in materials_by_species.values())
@@ -507,6 +553,27 @@ def generate_shop_report_html(customer_info, door_items, door_style, door_specs=
                 <td>{eight_foot_pieces} pcs</td>
                 <td>{size_note}</td>
                 <td>{species} - {bf_str}</td>
+            </tr>"""
+    
+    # Add panel sheets by species
+    for species, counts in materials_by_species.items():
+        if counts.get('panels'):
+            # Calculate exact sheet needs
+            total_area = sum(p['width'] * p['height'] for p in counts['panels'])
+            sheet_area = 48 * 96  # 4x8 sheet
+            exact_sheets = total_area / sheet_area * 1.15  # With 15% waste factor
+            sheets_needed = calculate_panel_sheets(counts['panels'])
+            
+            if sheets_needed > 0:
+                panel_type = customer_info.get('panel_cut', '1/4" MDF')
+                # Format exact sheets to 2 decimal places
+                exact_str = f"{exact_sheets:.2f}sh"
+                html += f"""
+            <tr>
+                <td>Panel Sheets</td>
+                <td>{sheets_needed} sheets</td>
+                <td>4' x 8' x {panel_type}</td>
+                <td>{species} - {exact_str}</td>
             </tr>"""
     
     # Add hinges as separate line item
@@ -689,6 +756,35 @@ def generate_cut_list_html(customer_info, door_items, door_style, door_specs=Non
                 'material': material,
                 'has_oversize': False
             })
+            
+            # Calculate panel dimensions based on door specs
+            sticking = 0.5  # Default 1/2" sticking
+            panel_thickness = customer_info.get('panel_cut', '1/4"')
+            
+            if is_mitre_cut:
+                # For mitre cut: panel size = finish size - width + (sticking - 1/8)
+                # This means we subtract the frame width and add back a small amount for the groove
+                panel_width = width - (2 * fraction_to_decimal(stile_width)) + (sticking - 0.125)
+                panel_height = height - (2 * fraction_to_decimal(stile_width)) + (sticking - 0.125)
+            else:
+                # For cope and stick: different calculation
+                # From specs: panel size = finish size - (rail width + ((stick*2) - 1/8))
+                stile_width_decimal = fraction_to_decimal(stile_width)
+                panel_width = width - (stile_width_decimal + ((sticking * 2) - 0.125))
+                panel_height = height - (stile_width_decimal + ((sticking * 2) - 0.125))
+            
+            # Add panel to cuts
+            cuts.append({
+                'qty': qty,  # One panel per door
+                'length': panel_height,
+                'width': decimal_to_fraction(panel_width) + '"',
+                'part': 'PANELS',
+                'label': f"Cabinet #{item['cabinet']}",
+                'desc': f"{qty} {item['type']} @ {item['width']} x {item['height']}",
+                'material': material,
+                'panel_thickness': panel_thickness,
+                'has_oversize': False
+            })
     
     # Group cuts by length, width, part, and material
     from collections import defaultdict
@@ -716,11 +812,23 @@ def generate_cut_list_html(customer_info, door_items, door_style, door_specs=Non
             'cabinets': value['cabinets']
         })
     
-    # Sort: Paint Grade first, then other materials, within each group sort by length (descending) and part
-    sorted_cuts.sort(key=lambda x: (
+    # Separate panels from stiles/rails
+    stiles_rails = [cut for cut in sorted_cuts if cut['part'] in ['STILES', 'RAILS']]
+    panels = [cut for cut in sorted_cuts if cut['part'] == 'PANELS']
+    
+    # Sort stiles and rails
+    stiles_rails.sort(key=lambda x: (
         0 if x['material'] == 'Paint Grade' else 1,  # Paint Grade first
-        -x['length'],  # Longest first within material
-        x['part']  # STILES before RAILS
+        x['material'],  # Then by material name
+        0 if x['part'] == 'STILES' else 1,  # STILES before RAILS
+        -x['length']  # Longest first within part type
+    ))
+    
+    # Sort panels separately
+    panels.sort(key=lambda x: (
+        0 if x['material'] == 'Paint Grade' else 1,  # Paint Grade first
+        x['material'],  # Then by material name
+        -x['length']  # Longest first
     ))
     
     html = f"""<!DOCTYPE html>
@@ -754,16 +862,23 @@ def generate_cut_list_html(customer_info, door_items, door_style, door_specs=Non
     
     total_stiles = 0
     total_rails = 0
+    total_panels = 0
     materials_totals = {}
     current_material = None
     
-    for cut in sorted_cuts:
+    # Display stiles and rails first
+    html += f"""
+        <tr style="background-color: #4a4a4a; color: white;">
+            <td colspan="5" style="text-align: center; font-size: 18px; font-weight: bold;">STILES & RAILS</td>
+        </tr>"""
+    
+    for cut in stiles_rails:
         length_str = decimal_to_fraction(cut['length']) + '"'
         material = cut['material']
         
         # Track totals by material
         if material not in materials_totals:
-            materials_totals[material] = {'stiles': 0, 'rails': 0}
+            materials_totals[material] = {'stiles': 0, 'rails': 0, 'panels': 0}
         
         # Add material header row when material changes
         if current_material != material:
@@ -782,20 +897,84 @@ def generate_cut_list_html(customer_info, door_items, door_style, door_specs=Non
         if cut['part'] == 'STILES':
             materials_totals[material]['stiles'] += cut['qty']
             total_stiles += cut['qty']
-        else:
+        elif cut['part'] == 'RAILS':
             materials_totals[material]['rails'] += cut['qty']
             total_rails += cut['qty']
+        elif cut['part'] == 'PANELS':
+            materials_totals[material]['panels'] += cut['qty']
+            total_panels += cut['qty']
         
-        # Format cabinet list
-        cabinet_list = ', '.join([f"({cab['qty']}) #{cab['cabinet']}" for cab in cut['cabinets']])
+        # Format cabinet list with double space between groups
+        cabinet_list = ',  '.join([f"({cab['qty']}) #{cab['cabinet']}" for cab in cut['cabinets']])
         
-        # Format size as width x length
-        size_str = f"{cut['width'].rstrip('"')} x {length_str}"
+        # Format size with justified alignment
+        width_part = cut['width'].rstrip('"')
+        length_part = length_str
         
         html += f"""
         <tr>
             <td>{cut['qty']}</td>
-            <td>{size_str}</td>
+            <td style="white-space: nowrap;">
+                <span style="display: inline-block; width: 45%; text-align: right;">{width_part}</span>
+                <span style="display: inline-block; width: 10%; text-align: center;">x</span>
+                <span style="display: inline-block; width: 45%; text-align: left;">{length_part}</span>
+            </td>
+            <td>{cut['part']}</td>
+            <td>{cabinet_list}</td>
+            <td style="white-space: nowrap;">{material}</td>
+        </tr>"""
+    
+    # Now display panels as a separate section
+    if panels:
+        html += f"""
+        <tr style="background-color: #333; height: 3px;">
+            <td colspan="5" style="padding: 0;"></td>
+        </tr>
+        <tr style="background-color: #4a4a4a; color: white;">
+            <td colspan="5" style="text-align: center; font-size: 18px; font-weight: bold;">PANELS</td>
+        </tr>"""
+        
+        current_material = None
+        for cut in panels:
+            length_str = decimal_to_fraction(cut['length']) + '"'
+            material = cut['material']
+            
+            # Track totals by material
+            if material not in materials_totals:
+                materials_totals[material] = {'stiles': 0, 'rails': 0, 'panels': 0}
+            
+            # Add material header row when material changes
+            if current_material != material:
+                if current_material is not None:
+                    # Add separator row between materials
+                    html += f"""
+        <tr style="background-color: #333; height: 2px;">
+            <td colspan="5" style="padding: 0;"></td>
+        </tr>"""
+                html += f"""
+        <tr style="background-color: #e0e0e0; font-weight: bold;">
+            <td colspan="5" style="text-align: center; font-size: 16px;">{material.upper()} PANELS</td>
+        </tr>"""
+                current_material = material
+            
+            materials_totals[material]['panels'] += cut['qty']
+            total_panels += cut['qty']
+            
+            # Format cabinet list
+            cabinet_list = ', '.join([f"({cab['qty']}) #{cab['cabinet']}" for cab in cut['cabinets']])
+            
+            # Format size with justified alignment
+            width_part = cut['width'].rstrip('"')
+            length_part = length_str
+            
+            html += f"""
+        <tr>
+            <td>{cut['qty']}</td>
+            <td style="white-space: nowrap;">
+                <span style="display: inline-block; width: 45%; text-align: right;">{width_part}</span>
+                <span style="display: inline-block; width: 10%; text-align: center;">x</span>
+                <span style="display: inline-block; width: 45%; text-align: left;">{length_part}</span>
+            </td>
             <td>{cut['part']}</td>
             <td>{cabinet_list}</td>
             <td style="white-space: nowrap;">{material}</td>
@@ -808,13 +987,14 @@ def generate_cut_list_html(customer_info, door_items, door_style, door_specs=Non
         <h2>Summary</h2>
         <p><strong>Total Stiles:</strong> {total_stiles} pieces</p>
         <p><strong>Total Rails:</strong> {total_rails} pieces</p>
-        <p><strong>Total Pieces:</strong> {total_stiles + total_rails} pieces</p>
+        <p><strong>Total Panels:</strong> {total_panels} pieces</p>
+        <p><strong>Total Pieces:</strong> {total_stiles + total_rails + total_panels} pieces</p>
         
         <h2>By Material</h2>"""
     
     for material, counts in materials_totals.items():
         html += f"""
-        <p><strong>{material}:</strong> {counts['stiles']} stiles, {counts['rails']} rails = {counts['stiles'] + counts['rails']} pieces</p>"""
+        <p><strong>{material}:</strong> {counts['stiles']} stiles, {counts['rails']} rails, {counts['panels']} panels = {counts['stiles'] + counts['rails'] + counts['panels']} pieces</p>"""
     
     html += """
     </div>

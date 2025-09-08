@@ -16,6 +16,7 @@ sticking for this style is 1/2
 panel sizes for the door will be 
 height = finish sizes - (rail width + ((stick*2) - 1/8))
 width = finish size -(rail width + ((stick*2) - 1/8))
+panel material used is 4x8 sheets of plywood
 
 
 this is a 5 piece door

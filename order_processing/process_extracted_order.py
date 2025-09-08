@@ -17,8 +17,13 @@ spec.loader.exec_module(module)
 
 process_order = module.process_order
 
-# Load extracted data
-with open('extraction_template.json', 'r', encoding='utf-8') as f:
+# Load extracted data from command line argument or default
+if len(sys.argv) > 1:
+    template_file = sys.argv[1]
+else:
+    template_file = 'extraction_template.json'
+
+with open(template_file, 'r', encoding='utf-8') as f:
     data = json.load(f)
 
 customer_info = data['customer_info']

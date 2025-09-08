@@ -6,8 +6,8 @@ this is a mitre cut door so stile and rail length calculations are exact outside
 
 sticking for this style is 1/2 
 
-panel sizes for the door will be finish sizes - width + (sticking - 1/8) for both width and height
-
+panel sizes for the door will be panel size = finish sizes - width + (sticking - 1/8) for both width and height
+panel material is 4x8 sheets of plywood
 this is a 5 piece door
 a 5 piece door has 5 parts it has 
 2 stiles
