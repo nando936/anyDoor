@@ -27,6 +27,13 @@ Main processing script that generates all reports from extracted data.
   * Cabinet grouping with improved spacing
   * Separate panels section with calculations
   * Material totals and summaries
+- **NEW**: Generates panel optimizer report with:
+  * 2D bin packing algorithm (FFDH with shelf packing)
+  * Visual SVG diagrams rotated for 8.5x11 portrait printing
+  * Bottom-left (0,0) origin for shop coordinates
+  * Step-by-step cutting instructions
+  * One sheet pattern per page
+  * Efficiency metrics and waste calculation
 - Converts all to PDFs
 - Saves JSON data for records
 - **NEW**: Automatically moves processed PDFs to 'processed' folder
@@ -40,6 +47,15 @@ Helper for extracting data from user-submitted PDFs.
 
 ### 3. `3_convert_html_to_pdf.py`
 Utility for converting HTML reports to PDFs using Selenium.
+
+### 4. `panel_optimizer.py`
+2D bin packing optimizer for sheet goods.
+- Uses First Fit Decreasing Height (FFDH) algorithm
+- Groups panels by material type
+- Generates visual cutting diagrams
+- Creates step-by-step cutting instructions
+- Calculates material usage and efficiency
+- Supports grain direction constraints
 
 ## Step-by-Step Process
 
@@ -61,6 +77,7 @@ This generates:
 - `finish_door_list.html` - Editable finish door list with pictures
 - `shop_report.html` - Production shop report with panel sheets & board feet
 - `cut_list.html` - Cut list with justified dimensions & panel calculations
+- `panel_optimizer.html` - Visual cutting diagrams with optimization
 - All corresponding PDFs
 - **Automatically moves source PDF to 'processed' folder**
 

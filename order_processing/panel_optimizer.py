@@ -330,7 +330,7 @@ class PanelOptimizer:
         svg = f'''<svg width="{svg_width}" height="{svg_height}" viewBox="0 0 {svg_width} {svg_height}" xmlns="http://www.w3.org/2000/svg">
         <style>
             .sheet {{ fill: #f5f5f5; stroke: #333; stroke-width: 2; }}
-            .panel {{ fill: #e8f4f8; stroke: #2196F3; stroke-width: 1.5; }}
+            .panel {{ fill: #e8f4f8; stroke: #2196F3; stroke-width: 1; }}
             .grain-v {{ fill: url(#grainV); }}
             .grain-h {{ fill: url(#grainH); }}
             .label {{ font-family: Arial; font-size: 12px; text-anchor: middle; }}
@@ -354,13 +354,24 @@ class PanelOptimizer:
             <rect x="10" y="10" width="{orig_width * 72 - 20}" height="{orig_height * 72 - 20}" class="sheet"/>
             '''
         
-        # Draw panels with rotation
+        # Draw panels with rotation (flip Y axis for bottom-left origin)
+        # Calculate the actual drawing scale to fit within the margins
+        margin = 10  # pixels
+        sheet_width_pixels = orig_width * 72 - 2 * margin  # 250 pixels for 48" sheet
+        sheet_height_pixels = orig_height * 72 - 2 * margin  # 520 pixels for 96" sheet
+        
+        # Actual scale factors for drawing within margins
+        # This ensures panels are scaled to fit within the visible sheet rectangle
+        x_scale = sheet_width_pixels / sheet.width
+        y_scale = sheet_height_pixels / sheet.height
+        
         for placed in sheet.panels:
-            # Scale panel positions to pixels
-            px = 10 + placed.x * scale * 72
-            py = 10 + placed.y * scale * 72
-            pw = placed.width * scale * 72
-            ph = placed.height * scale * 72
+            # Scale panel positions to pixels within margins
+            px = margin + placed.x * x_scale
+            # Flip Y coordinate: SVG uses top-left, we want bottom-left
+            py = margin + (sheet.height - placed.y - placed.height) * y_scale
+            pw = placed.width * x_scale
+            ph = placed.height * y_scale
             
             # Determine grain class
             grain_class = "grain-h" if placed.rotated else "grain-v"
@@ -369,12 +380,14 @@ class PanelOptimizer:
             <!-- Panel {placed.panel.label} -->
             <rect x="{px}" y="{py}" width="{pw}" height="{ph}" 
                   class="panel {grain_class}"/>
-            <text x="{px + pw/2}" y="{py + ph/2}" class="label">
-                {placed.panel.label}
-            </text>
-            <text x="{px + pw/2}" y="{py + ph/2 + 12}" class="dimension">
-                {self._format_dimension(placed.width)} x {self._format_dimension(placed.height)}
-            </text>'''
+            <g transform="rotate(-90 {px + pw/2} {py + ph/2})">
+                <text x="{px + pw/2}" y="{py + ph/2}" class="label">
+                    {placed.panel.label}
+                </text>
+                <text x="{px + pw/2}" y="{py + ph/2 + 12}" class="dimension">
+                    {self._format_dimension(placed.width)} x {self._format_dimension(placed.height)}
+                </text>
+            </g>'''
         
         # Close the rotation group
         svg += '''
