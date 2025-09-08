@@ -30,6 +30,7 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 import time
 from datetime import datetime
+import shutil
 
 # Set encoding for Windows
 sys.stdout.reconfigure(encoding='utf-8')
@@ -1056,8 +1057,47 @@ def html_to_pdf(html_content, pdf_path):
         print(f"[ERROR] PDF conversion failed: {e}")
         return False
 
-def process_order(customer_info, door_items, door_style, output_prefix):
-    """Main function to process an order"""
+def move_to_processed(pdf_path=None):
+    """Move PDF from 'need to process' to 'processed' folder"""
+    if not pdf_path:
+        return False
+        
+    # Ensure processed folder exists
+    processed_folder = 'processed'
+    os.makedirs(processed_folder, exist_ok=True)
+    
+    # Check if source file exists
+    if os.path.exists(pdf_path):
+        filename = os.path.basename(pdf_path)
+        dest_path = os.path.join(processed_folder, filename)
+        
+        # Handle if file already exists in processed folder
+        if os.path.exists(dest_path):
+            base, ext = os.path.splitext(filename)
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f"{base}_{timestamp}{ext}"
+            dest_path = os.path.join(processed_folder, filename)
+        
+        try:
+            shutil.move(pdf_path, dest_path)
+            print(f"\n6. Moving original PDF to processed folder...")
+            print(f"   [OK] Moved: {pdf_path} -> {dest_path}")
+            return True
+        except Exception as e:
+            print(f"   [WARNING] Could not move file: {e}")
+            return False
+    return False
+
+def process_order(customer_info, door_items, door_style, output_prefix, source_pdf=None):
+    """Main function to process an order
+    
+    Args:
+        customer_info: Customer information dictionary
+        door_items: List of door items
+        door_style: Door style number
+        output_prefix: Prefix for output files (customer_job)
+        source_pdf: Optional path to source PDF to move after processing
+    """
     
     print(f"Processing order for {customer_info['name']}")
     print("=" * 60)
@@ -1122,6 +1162,10 @@ def process_order(customer_info, door_items, door_style, output_prefix):
     print("\n" + "=" * 60)
     print("Order processing complete!")
     print(f"All files created in: {output_folder}/")
+    
+    # 6. Move source PDF to processed folder if provided
+    if source_pdf:
+        move_to_processed(source_pdf)
 
 # Example usage
 if __name__ == "__main__":

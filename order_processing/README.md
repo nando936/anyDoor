@@ -16,11 +16,20 @@ This system takes ANY user-submitted order and converts it to OUR STANDARD finis
 Main processing script that generates all reports from extracted data.
 - Creates finish door list (HTML with pictures and specifications)
 - Handles opening size to finish size conversion (adds 2x overlay)
-- Loads door specifications from specs files
-- Generates shop report with technical specifications
-- Generates cut list
+- Loads door specifications from specs files (cope & stick or mitre cut)
+- Generates shop report with:
+  * Board feet calculations for stile sticks
+  * Panel sheet calculations (shows exact usage like 1.03sh)
+  * Oversize specifications for cope & stick doors
+  * Material grouping and consolidated notes
+- Generates cut list with:
+  * Justified dimension alignment (width right, x center, length left)
+  * Cabinet grouping with improved spacing
+  * Separate panels section with calculations
+  * Material totals and summaries
 - Converts all to PDFs
 - Saves JSON data for records
+- **NEW**: Automatically moves processed PDFs to 'processed' folder
 
 ### 2. `2_extract_from_pdf.py`
 Helper for extracting data from user-submitted PDFs.
@@ -44,13 +53,16 @@ This creates:
 
 ### Step 2: Process the Order
 ```bash
-python 1_process_new_order.py
+python process_extracted_order.py extraction_template.json
+# Or for specific orders:
+python process_extracted_order.py extraction_template_paul_revere.json "need to process/paul_revere_order.pdf"
 ```
 This generates:
-- `[customer]_[job]_door_list.html` - Editable finish door list with pictures
-- `[customer]_[job]_shop_report.html` - Production shop report
-- `[customer]_[job]_cut_list.html` - Cut list for materials
+- `finish_door_list.html` - Editable finish door list with pictures
+- `shop_report.html` - Production shop report with panel sheets & board feet
+- `cut_list.html` - Cut list with justified dimensions & panel calculations
 - All corresponding PDFs
+- **Automatically moves source PDF to 'processed' folder**
 
 ⚠️ **CRITICAL**: After door list generation, you MUST run `python critical_verification.py`
    - If it fails, FIX the issues and REGENERATE the door list
@@ -120,20 +132,32 @@ order_processing/
 ├── 1_process_new_order.py      # Main processing script
 ├── 2_extract_from_pdf.py       # PDF extraction helper
 ├── 3_convert_html_to_pdf.py    # HTML to PDF converter
+├── process_extracted_order.py  # Process orders from JSON templates
 ├── README.md                    # This file
 ├── need to process/             # INPUT: Place new PDFs here
 ├── output/                      # OUTPUT: Finished products organized by job
 │   ├── smith_kitchen_302/       # Example: Each job gets its own folder
-│   │   ├── smith_kitchen_302_door_list.html
-│   │   ├── smith_kitchen_302_door_list.pdf
-│   │   ├── smith_kitchen_302_shop_report.html
-│   │   ├── smith_kitchen_302_shop_report.pdf
-│   │   ├── smith_kitchen_302_cut_list.html
-│   │   ├── smith_kitchen_302_cut_list.pdf
-│   │   └── smith_kitchen_302_data.json
+│   │   ├── finish_door_list.html
+│   │   ├── finish_door_list.pdf
+│   │   ├── shop_report.html
+│   │   ├── shop_report.pdf
+│   │   ├── cut_list.html
+│   │   ├── cut_list.pdf
+│   │   └── order_data.json
 │   └── [next_customer_job]/
 ├── processed/                   # ARCHIVE: Original PDFs after processing
 ├── door pictures/               # RESOURCES: Door style pictures and specifications
+│   ├── 103 door pic.JPG
+│   ├── 103 door profile.JPG
+│   ├── 103 specs.txt           # Cope & stick specifications
+│   ├── 231 door pic.JPG
+│   ├── 231 door profile.JPG
+│   ├── 231 specs.txt           # Mitre cut specifications
+│   └── [other door styles]/
+├── sample_order_generator/      # TESTING: Generate sample orders
+│   ├── README.md               # Testing documentation
+│   ├── generate_sample_order.py # Main sample generator
+│   └── extraction templates/   # Pre-made test orders
 ├── templates/                   # HTML templates (if needed)
 ├── scripts/                     # Additional utility scripts
 ├── examples/                    # Example orders
@@ -196,9 +220,11 @@ order_processing/
    - **KEEP ITERATING** until all checks pass
    - Only proceed to production when verification shows ZERO errors
 
-5. **Original PDF moves to `processed/` folder**
+5. **Original PDF automatically moves to `processed/` folder**
+   - **NEW**: Happens automatically after successful processing
    - Keeps `need to process/` clean for new orders
    - `processed/` serves as archive of original PDFs
+   - If file exists, adds timestamp to prevent overwriting
 
 ## Folder Purposes:
 - **need to process/** = Inbox for new orders
@@ -241,29 +267,64 @@ order_processing/
 ]
 ```
 
-## Formulas Used
+## Formulas and Calculations
 
-### Stiles Calculation
-- Length = Door Height + 1/4"
-- Width = 2 3/8"
-- Quantity = 2 per door/drawer
+### IMPORTANT: Door-Specific Specifications
+**Each door style has its own unique specifications defined in the spec files.**
+- Formulas are NOT universal - they vary by door style
+- Always refer to `door pictures/[style] specs.txt` for exact formulas
+- The system automatically reads and applies the correct specs for each door style
 
-### Rails Calculation
-- Length = Door Width - 4 1/2" + 3/4"
-- Width = 2 3/8"
-- Quantity = 2 per door/drawer
+### How Specifications Work
+1. **System reads spec file** for the door style (e.g., `103 specs.txt`)
+2. **Extracts formulas** specific to that door style:
+   - Stile and rail dimensions
+   - Oversize requirements (if any)
+   - Panel calculations
+   - Material thickness
+   - Construction type (cope & stick, mitre cut, etc.)
+3. **Applies formulas** automatically during processing
 
-### Material Calculation
-- Linear inches = (Width + Height) × 2 × Quantity
-- 8-foot pieces = Total inches ÷ 96" (rounded up)
+### Example Spec File Contents
+Each spec file contains unique information like:
+- Stile/rail widths for that specific style
+- Whether oversize is needed and how much
+- Panel calculation formulas
+- Sticking depth
+- Material requirements
+
+### Standard Calculations (Applied After Reading Specs)
+These are consistent across all door styles:
+- **Board feet** = (width × length × quantity) ÷ 144
+- **8-foot sticks** = Total linear inches ÷ 96" (rounded up)
+- **Panel sheets** = Total panel area ÷ (4' × 8') × 1.15 (waste factor)
+
+### Adding New Door Styles
+To add a new door style:
+1. Create `[style] specs.txt` in `door pictures/` folder
+2. Include ALL formulas and specifications for that style
+3. Add door pictures: `[style] door pic.JPG` and `[style] door profile.JPG`
+4. The system will automatically use these specs when processing
+
+**Note**: Never assume formulas from one door style apply to another. Each style is unique!
 
 ## Testing
 
-To test with sample data:
+### Quick Test with Default Sample
+To test with built-in sample data:
 ```bash
 python 1_process_new_order.py
 ```
 This will create sample output files to verify the system is working.
+
+### Generate Custom Test Orders
+Use the sample order generator for testing:
+```bash
+cd sample_order_generator
+python generate_sample_order.py 103 "Test Customer"
+```
+
+See `sample_order_generator/README.md` for detailed testing instructions.
 
 ## Notes
 
