@@ -564,7 +564,7 @@ def generate_optimizer_report(customer_info: Dict, door_items: List[Dict],
     # Summary page
     total_sheets = len(sheets)
     total_panels = sum(len(s.panels) for s in sheets)
-    avg_efficiency = sum(s.efficiency() for s in sheets) / len(sheets) if sheets else 0
+    avg_efficiency = sum(s.efficiency for s in sheets) / len(sheets) if sheets else 0
     total_waste = sum(s.waste_area() for s in sheets)
     
     # Group sheets by material
@@ -656,7 +656,7 @@ def generate_optimizer_report(customer_info: Dict, door_items: List[Dict],
             <div class="info-grid">
                 <div><strong>Sheet Size:</strong> {sheet.width}" x {sheet.height}" (4' x 8')</div>
                 <div><strong>Panels on Sheet:</strong> {len(sheet.panels)}</div>
-                <div><strong>Material Usage:</strong> {sheet.efficiency():.1f}%</div>
+                <div><strong>Material Usage:</strong> {sheet.efficiency:.1f}%</div>
                 <div><strong>Waste:</strong> {sheet.waste_area() / 144:.2f} sq ft</div>
             </div>
         </div>

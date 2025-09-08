@@ -1,101 +1,103 @@
 {
   "customer_info": {
-    "name": "Benjamin Franklin",
-    "address": "456 Independence Ave, Philadelphia, PA 19106",
-    "phone": "555-1706",
-    "email": "ben@foundingfathers.com",
-    "job_name": "Library Cabinet Renovation",
-    "job_number": "103",
-    "date": "09/08/2025",
-    "wood_species": "Cherry",
-    "door_style": "103",
-    "hinge_type": "Blum Soft Close Concealed",
-    "overlay": "1/2\" Overlay",
-    "bore_prep": true,
+    "name": "Paul Revere",
+    "address": "1776 Liberty Lane, Boston TX 77385",
+    "phone": "(281) 555-1775",
+    "email": "prevere@colonialcabinets.com",
+    "job_name": "Revere Kitchen Remodel",
+    "job_number": "231",
+    "date": "09/07/2025",
+    "wood_species": "Paint Grade & White Oak (see notes)",
+    "door_style": "231",
+    "hinge_type": "Blum Soft Close Frameless 1/2\"OL",
+    "overlay": "1/2\"",
+    "bore_prep": false,
     "panel_cut": "3/8\" Plywood (Flat Panel ONLY)",
-    "outside_edge": "Square",
-    "inside_edge": "Ogee"
+    "outside_edge": "Standard for #231",
+    "inside_edge": "Standard for #231",
+    "door_sizes": "Opening Sizes",
+    "drawer_type": "5 piece"
   },
   "door_items": [
     {
       "line": 1,
       "cabinet": 1,
       "qty": 2,
-      "width": "14 1/2",
-      "height": "28 3/4",
+      "width": "14 3/8",
+      "height": "24 3/4",
       "type": "door",
-      "material": "Cherry",
-      "notes": ""
+      "material": "Paint Grade",
+      "notes": "Cabinet #1 - Paint Grade"
     },
     {
       "line": 2,
       "cabinet": 2,
       "qty": 2,
-      "width": "14 1/2",
-      "height": "28 3/4",
+      "width": "14 7/16",
+      "height": "24 3/4",
       "type": "door",
-      "material": "Cherry",
-      "notes": ""
+      "material": "Paint Grade",
+      "notes": "Cabinet #2 - Paint Grade"
     },
     {
       "line": 3,
       "cabinet": 3,
       "qty": 1,
-      "width": "30 1/4",
-      "height": "18 7/8",
+      "width": "14 3/4",
+      "height": "24 3/4",
       "type": "door",
-      "material": "Cherry",
-      "notes": "Horizontal grain"
+      "material": "Paint Grade",
+      "notes": "No hinge boring - trash drawer - Paint Grade"
     },
     {
       "line": 4,
       "cabinet": 4,
       "qty": 2,
-      "width": "12 3/8",
-      "height": "36 1/2",
+      "width": "13 3/4",
+      "height": "24 3/4",
       "type": "door",
-      "material": "Cherry",
-      "notes": ""
+      "material": "Paint Grade",
+      "notes": "Cabinet #6 - Paint Grade"
     },
     {
       "line": 5,
       "cabinet": 5,
       "qty": 2,
-      "width": "16 5/8",
-      "height": "24 1/4",
+      "width": "14 3/4",
+      "height": "24 3/4",
       "type": "door",
-      "material": "Cherry",
-      "notes": ""
+      "material": "Paint Grade",
+      "notes": "Cabinet #7 - Paint Grade"
     },
     {
       "line": 6,
       "cabinet": 6,
-      "qty": 4,
-      "width": "9 3/4",
-      "height": "30 1/2",
+      "qty": 2,
+      "width": "13 13/16",
+      "height": "24 3/4",
       "type": "door",
-      "material": "Cherry",
-      "notes": ""
+      "material": "White Oak",
+      "notes": "Cabinet #10 - White Oak"
     },
     {
       "line": 7,
       "cabinet": 7,
-      "qty": 1,
-      "width": "24 7/8",
-      "height": "12 3/8",
-      "type": "drawer",
-      "material": "Cherry",
-      "notes": "5 piece drawer front"
+      "qty": 2,
+      "width": "16 1/2",
+      "height": "41 7/8",
+      "type": "door",
+      "material": "White Oak",
+      "notes": "Cabinet #23 - White Oak"
     },
     {
       "line": 8,
       "cabinet": 8,
       "qty": 2,
-      "width": "18 1/4",
-      "height": "42 1/2",
+      "width": "16 1/2",
+      "height": "41 7/8",
       "type": "door",
-      "material": "Cherry",
-      "notes": ""
+      "material": "White Oak",
+      "notes": "Cabinet #24 - White Oak"
     }
   ]
 }

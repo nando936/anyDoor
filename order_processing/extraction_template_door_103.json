@@ -6,19 +6,18 @@
     "email": "bfranklin@customkitchens.com",
     "job_name": "Franklin Master Kitchen",
     "job_number": "103",
-    "date": "01/08/2025",
-    "wood_species": "Paint Grade, Stain Grade Maple",
+    "date": "09/08/2025",
+    "wood_species": "Mixed (Paint Grade & Stain Grade Maple)",
     "door_style": "103",
     "hinge_type": "Blum Soft Close Frameless 1/2\"OL",
     "overlay": "1/2\"",
     "bore_prep": true,
-    "panel_cut": "1/4 Panel",
+    "door_sizes": "Finish Sizes",
     "outside_edge": "Standard for #103",
     "inside_edge": "Standard for #103",
-    "door_sizes": "Finish Sizes",
+    "panel_cut": "1/4\" MDF Raised Panel",
     "drawer_type": "5 piece"
   },
-  "door_style": "103",
   "door_items": [
     {
       "line": 1,
@@ -130,6 +129,5 @@
       "material": "Stain Grade Maple",
       "notes": ""
     }
-  ],
-  "processed_date": "2025-09-08 09:05:14"
+  ]
 }

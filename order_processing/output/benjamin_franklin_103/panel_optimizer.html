@@ -1,8 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <meta charset="UTF-8">
-    <title>Panel Optimization Report - Benjamin Franklin</title>
+    <title>Panel Optimizer Report - Franklin Master Kitchen</title>
     <style>
         @page {
             size: letter portrait;
@@ -12,423 +11,596 @@
         body {
             font-family: Arial, sans-serif;
             margin: 0;
-            padding: 20px;
-            font-size: 12px;
-        }
-        
-        .header {
-            margin-bottom: 30px;
-            border-bottom: 2px solid #333;
-            padding-bottom: 15px;
-        }
-        
-        h1 {
-            margin: 0;
-            font-size: 24px;
-        }
-        
-        .customer-info {
-            display: flex;
-            justify-content: space-between;
-            margin-top: 15px;
-        }
-        
-        .sheet-page {
-            page-break-after: always;
-            min-height: 9in;
-        }
-        
-        .sheet-page:last-child {
-            page-break-after: auto;
-        }
-        
-        .sheet-header {
-            background: #f0f0f0;
-            padding: 10px;
-            margin-bottom: 20px;
-            border: 1px solid #ccc;
-        }
-        
-        .diagram-container {
-            text-align: center;
-            margin: 20px auto;
-            max-width: 7.5in;
-        }
-        
-        .diagram-container svg {
-            width: 100%;
-            height: auto;
-        }
-        
-        .cutting-instructions {
-            margin-top: 30px;
-            padding: 15px;
-            background: #f9f9f9;
-            border: 1px solid #ddd;
-        }
-        
-        .cutting-instructions h3 {
-            margin-top: 0;
-            font-size: 16px;
-        }
-        
-        .cutting-instructions ol {
-            margin: 10px 0;
-            padding-left: 30px;
-        }
-        
-        .cutting-instructions li {
-            margin: 5px 0;
-            line-height: 1.5;
-        }
-        
-        .panel-list {
-            margin-top: 20px;
-        }
-        
-        .panel-list ul {
-            list-style: none;
             padding: 0;
         }
         
-        .panel-list li {
-            padding: 5px;
-            background: #fff;
-            margin: 3px 0;
-            border-left: 3px solid #333;
-            padding-left: 10px;
+        .page {
+            page-break-after: always;
+            min-height: 10in;
+            padding: 0.5in;
+        }
+        
+        .page:last-child {
+            page-break-after: auto;
+        }
+        
+        .header {
+            border-bottom: 2px solid #333;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+        
+        h1 {
+            font-size: 20px;
+            margin: 0 0 10px 0;
+        }
+        
+        h2 {
+            font-size: 16px;
+            margin: 15px 0 10px 0;
+            background: #333;
+            color: white;
+            padding: 5px 10px;
+        }
+        
+        .info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            font-size: 12px;
+        }
+        
+        .diagram {
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin: 20px auto;
+            background: white;
+            display: flex;
+            justify-content: center;
+        }
+        
+        .instructions {
+            background: #f9f9f9;
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin-top: 20px;
+            font-size: 12px;
+        }
+        
+        .instructions ol {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+        
+        .instructions li {
+            margin: 5px 0;
+            line-height: 1.4;
         }
         
         .summary {
-            margin-top: 30px;
-            padding: 15px;
             background: #e8f4f8;
-            border: 1px solid #b0d4e3;
+            border: 1px solid #2196F3;
+            padding: 15px;
+            margin: 20px 0;
         }
         
-        .footer {
-            margin-top: 30px;
-            padding-top: 20px;
-            border-top: 1px solid #ccc;
+        .summary-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 15px;
+            font-size: 14px;
+        }
+        
+        .stat-box {
             text-align: center;
-            font-size: 12px;
+            padding: 10px;
+            background: white;
+            border-radius: 5px;
+        }
+        
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #2196F3;
+        }
+        
+        .stat-label {
+            font-size: 11px;
             color: #666;
+            margin-top: 5px;
+        }
+        
+        .efficiency-high { color: #4CAF50; }
+        .efficiency-med { color: #FF9800; }
+        .efficiency-low { color: #F44336; }
+        
+        .materials-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        
+        .materials-table th, .materials-table td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        
+        .materials-table th {
+            background: #f0f0f0;
+        }
+        
+        .improvement-note {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            padding: 10px;
+            margin-top: 20px;
+            font-size: 12px;
         }
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>Panel Optimization Report</h1>
-        <div class="customer-info">
-            <div>
-                <strong>Customer:</strong> Benjamin Franklin<br>
-                <strong>Job:</strong> N/A<br>
-                <strong>Door Style:</strong> 103
-            </div>
-            <div style="text-align: right;">
-                <strong>Date:</strong> 2025-09-08<br>
-                <strong>Phone:</strong> 555-1706<br>
-                <strong>Total Panels:</strong> 16
-            </div>
-        </div>
-    </div>
 
-    <div class="sheet-page">
-        <div class="sheet-header">
-            <h2>Sheet 1 of 1</h2>
-            <strong>Material:</strong> Wood | 
-            <strong>Size:</strong> 48.0" x 96.0" | 
-            <strong>Panels:</strong> 16 | 
-            <strong>Efficiency:</strong> 54.0%
+    <div class="page">
+        <div class="header">
+            <h1>PANEL OPTIMIZATION REPORT - MAXRECTS ALGORITHM</h1>
+            <div class="info-grid">
+                <div><strong>Customer:</strong> Benjamin Franklin</div>
+                <div><strong>Job:</strong> Franklin Master Kitchen (#103)</div>
+                <div><strong>Date:</strong> 01/08/2025</div>
+                <div><strong>Door Style:</strong> #103</div>
+            </div>
         </div>
         
-        <div class="diagram-container">
+        <div class="summary">
+            <h2 style="margin-top: 0;">OPTIMIZATION SUMMARY</h2>
+            <div class="summary-grid">
+                <div class="stat-box">
+                    <div class="stat-value">2</div>
+                    <div class="stat-label">TOTAL SHEETS</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-value">20</div>
+                    <div class="stat-label">PANELS CUT</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-value efficiency-high">73.8%</div>
+                    <div class="stat-label">AVG EFFICIENCY</div>
+                </div>
+            </div>
+        </div>
+        
+        <h2>MATERIAL BREAKDOWN</h2>
+        <table class="materials-table">
+            <tr>
+                <th>Material</th>
+                <th>Sheets Required</th>
+                <th>Total Area Used</th>
+                <th>Efficiency</th>
+                <th>Waste (sq ft)</th>
+            </tr>
+            <tr>
+                <td>Stain Grade Maple</td>
+                <td>1</td>
+                <td>24.8 sq ft</td>
+                <td>77.6%</td>
+                <td>7.2</td>
+            </tr>
+            <tr>
+                <td>Paint Grade</td>
+                <td>1</td>
+                <td>22.4 sq ft</td>
+                <td>69.9%</td>
+                <td>9.6</td>
+            </tr>
+        </table>
+        
+        <div class="improvement-note">
+            <strong>Algorithm: Maxrects with Best Area Fit</strong><br>
+            This advanced algorithm maintains maximal free rectangles for optimal placement.
+            Features enabled: Panel rotation (when grain allows), gap filling, waste tracking.
+        </div>
+        
+        <div style="margin-top: 30px; font-size: 11px; color: #666;">
+            <p><strong>Settings:</strong></p>
+            <ul>
+                <li>Kerf (blade width): 0.125"</li>
+                <li>Sheet size: 48.0" x 96.0"</li>
+                <li>Rotation enabled: False</li>
+                <li>Minimum waste size to track: 6" x 6"</li>
+            </ul>
+        </div>
+    </div>
+    <div class="page">
+        <div class="header">
+            <h1>SHEET #1 - Stain Grade Maple</h1>
+            <div class="info-grid">
+                <div><strong>Sheet Size:</strong> 48.0" x 96.0"</div>
+                <div><strong>Panels on Sheet:</strong> 9</div>
+                <div><strong>Material Usage:</strong> 77.6% (HIGH)</div>
+                <div><strong>Waste:</strong> 7.15 sq ft</div>
+            </div>
+        </div>
+        
+        <h2>CUTTING DIAGRAM</h2>
+        <div class="diagram">
             <svg width="540.0" height="270.0" viewBox="0 0 540.0 270.0" xmlns="http://www.w3.org/2000/svg">
         <style>
             .sheet { fill: #f5f5f5; stroke: #333; stroke-width: 2; }
             .panel { fill: #e8f4f8; stroke: #2196F3; stroke-width: 1; }
-            .grain-v { fill: url(#grainV); }
-            .grain-h { fill: url(#grainH); }
-            .label { font-family: Arial; font-size: 12px; text-anchor: middle; }
-            .dimension { font-family: Arial; font-size: 10px; fill: #666; }
+            .panel-rotated { fill: #f0e8f8; stroke: #9C27B0; stroke-width: 1; }
+            .free-rect { fill: #ffebe8; stroke: #ff5722; stroke-width: 0.5; stroke-dasharray: 2,2; opacity: 0.3; }
+            .label { font-family: Arial; font-size: 10px; text-anchor: middle; }
+            .dimension { font-family: Arial; font-size: 8px; fill: #666; }
+            .efficiency { font-family: Arial; font-size: 14px; font-weight: bold; fill: #2196F3; }
         </style>
         
-        <!-- Define wood grain patterns -->
-        <defs>
-            <pattern id="grainV" x="0" y="0" width="4" height="10" patternUnits="userSpaceOnUse">
-                <line x1="2" y1="0" x2="2" y2="10" stroke="#d4a373" stroke-width="0.5" opacity="0.3"/>
-            </pattern>
-            <pattern id="grainH" x="0" y="0" width="10" height="4" patternUnits="userSpaceOnUse">
-                <line x1="0" y1="2" x2="10" y2="2" stroke="#d4a373" stroke-width="0.5" opacity="0.3"/>
-            </pattern>
-        </defs>
-        
-        
-        <!-- Apply rotation transform to entire sheet -->
+        <!-- Apply rotation transform -->
         <g transform="rotate(90 270.0 135.0) translate(135.0 -135.0)">
             <!-- Sheet outline -->
             <rect x="10" y="10" width="250.0" height="520.0" class="sheet"/>
             
-            <!-- Panel 8 -->
-            <rect x="10.0" y="340.4166666666667" width="55.98958333333333" height="189.58333333333334" 
-                  class="panel grain-v"/>
-            <g transform="rotate(-90 37.994791666666664 435.20833333333337)">
-                <text x="37.994791666666664" y="435.20833333333337" class="label">
-                    8
+            <rect x="10.0" y="10.0" width="250.0" height="47.395833333333336" class="free-rect"/>
+            <rect x="158.4375" y="10.0" width="101.5625" height="106.97916666666667" class="free-rect"/>
+            <rect x="191.640625" y="233.4375" width="68.359375" height="63.645833333333336" class="free-rect"/>
+            <!-- Panel 11-1 -->
+            <rect x="10.0" y="349.89583333333337" width="89.19270833333333" height="180.10416666666669" class="panel"/>
+            <g transform="rotate(-90 54.596354166666664 439.94791666666674)">
+                <text x="54.596354166666664" y="435.94791666666674" class="label">
+                    11-1
                 </text>
-                <text x="37.994791666666664" y="447.20833333333337" class="dimension">
-                    10 3/4" x 35"
-                </text>
-            </g>
-            <!-- Panel 8 -->
-            <rect x="66.640625" y="340.4166666666667" width="55.98958333333333" height="189.58333333333334" 
-                  class="panel grain-v"/>
-            <g transform="rotate(-90 94.63541666666666 435.20833333333337)">
-                <text x="94.63541666666666" y="435.20833333333337" class="label">
-                    8
-                </text>
-                <text x="94.63541666666666" y="447.20833333333337" class="dimension">
-                    10 3/4" x 35"
+                <text x="54.596354166666664" y="447.94791666666674" class="dimension">
+                    17 1/8" x 33 1/4"
                 </text>
             </g>
-            <!-- Panel 3 -->
-            <rect x="123.28125" y="468.3854166666667" width="118.48958333333333" height="61.614583333333336" 
-                  class="panel grain-v"/>
-            <g transform="rotate(-90 182.52604166666666 499.19270833333337)">
-                <text x="182.52604166666666" y="499.19270833333337" class="label">
-                    3
+            <!-- Panel 11-2 -->
+            <rect x="99.19270833333333" y="349.89583333333337" width="89.19270833333333" height="180.10416666666669" class="panel"/>
+            <g transform="rotate(-90 143.7890625 439.94791666666674)">
+                <text x="143.7890625" y="435.94791666666674" class="label">
+                    11-2
                 </text>
-                <text x="182.52604166666666" y="511.19270833333337" class="dimension">
-                    22 3/4" x 11 3/8"
-                </text>
-            </g>
-            <!-- Panel 6 -->
-            <rect x="242.421875" y="405.4166666666667" width="11.71875" height="124.58333333333334" 
-                  class="panel grain-v"/>
-            <g transform="rotate(-90 248.28125 467.70833333333337)">
-                <text x="248.28125" y="467.70833333333337" class="label">
-                    6
-                </text>
-                <text x="248.28125" y="479.70833333333337" class="dimension">
-                    2 1/4" x 23"
-                </text>
-            </g>
-            <!-- Panel 5 -->
-            <rect x="10.0" y="249.01041666666669" width="47.526041666666664" height="90.72916666666667" 
-                  class="panel grain-v"/>
-            <g transform="rotate(-90 33.76302083333333 294.375)">
-                <text x="33.76302083333333" y="294.375" class="label">
-                    5
-                </text>
-                <text x="33.76302083333333" y="306.375" class="dimension">
-                    9 1/8" x 16 3/4"
-                </text>
-            </g>
-            <!-- Panel 5 -->
-            <rect x="58.17708333333333" y="249.01041666666669" width="47.526041666666664" height="90.72916666666667" 
-                  class="panel grain-v"/>
-            <g transform="rotate(-90 81.94010416666666 294.375)">
-                <text x="81.94010416666666" y="294.375" class="label">
-                    5
-                </text>
-                <text x="81.94010416666666" y="306.375" class="dimension">
-                    9 1/8" x 16 3/4"
-                </text>
-            </g>
-            <!-- Panel 1 -->
-            <rect x="106.35416666666666" y="224.63541666666669" width="36.45833333333333" height="115.10416666666667" 
-                  class="panel grain-v"/>
-            <g transform="rotate(-90 124.58333333333331 282.1875)">
-                <text x="124.58333333333331" y="282.1875" class="label">
-                    1
-                </text>
-                <text x="124.58333333333331" y="294.1875" class="dimension">
-                    7" x 21 1/4"
-                </text>
-            </g>
-            <!-- Panel 1 -->
-            <rect x="143.46354166666666" y="224.63541666666669" width="36.45833333333333" height="115.10416666666667" 
-                  class="panel grain-v"/>
-            <g transform="rotate(-90 161.69270833333331 282.1875)">
-                <text x="161.69270833333331" y="282.1875" class="label">
-                    1
-                </text>
-                <text x="161.69270833333331" y="294.1875" class="dimension">
-                    7" x 21 1/4"
-                </text>
-            </g>
-            <!-- Panel 2 -->
-            <rect x="180.57291666666666" y="224.63541666666669" width="36.45833333333333" height="115.10416666666667" 
-                  class="panel grain-v"/>
-            <g transform="rotate(-90 198.80208333333331 282.1875)">
-                <text x="198.80208333333331" y="282.1875" class="label">
-                    2
-                </text>
-                <text x="198.80208333333331" y="294.1875" class="dimension">
-                    7" x 21 1/4"
-                </text>
-            </g>
-            <!-- Panel 2 -->
-            <rect x="217.68229166666666" y="224.63541666666669" width="36.45833333333333" height="115.10416666666667" 
-                  class="panel grain-v"/>
-            <g transform="rotate(-90 235.91145833333331 282.1875)">
-                <text x="235.91145833333331" y="282.1875" class="label">
-                    2
-                </text>
-                <text x="235.91145833333331" y="294.1875" class="dimension">
-                    7" x 21 1/4"
-                </text>
-            </g>
-            <!-- Panel 4 -->
-            <rect x="10.0" y="66.875" width="25.390625" height="157.08333333333334" 
-                  class="panel grain-v"/>
-            <g transform="rotate(-90 22.6953125 145.41666666666669)">
-                <text x="22.6953125" y="145.41666666666669" class="label">
-                    4
-                </text>
-                <text x="22.6953125" y="157.41666666666669" class="dimension">
-                    4 7/8" x 29"
-                </text>
-            </g>
-            <!-- Panel 4 -->
-            <rect x="36.041666666666664" y="66.875" width="25.390625" height="157.08333333333334" 
-                  class="panel grain-v"/>
-            <g transform="rotate(-90 48.736979166666664 145.41666666666669)">
-                <text x="48.736979166666664" y="145.41666666666669" class="label">
-                    4
-                </text>
-                <text x="48.736979166666664" y="157.41666666666669" class="dimension">
-                    4 7/8" x 29"
+                <text x="143.7890625" y="447.94791666666674" class="dimension">
+                    17 1/8" x 33 1/4"
                 </text>
             </g>
             <!-- Panel 7 -->
-            <rect x="62.08333333333333" y="197.55208333333334" width="90.49479166666666" height="26.40625" 
-                  class="panel grain-v"/>
-            <g transform="rotate(-90 107.33072916666666 210.75520833333334)">
-                <text x="107.33072916666666" y="210.75520833333334" class="label">
+            <rect x="10.0" y="203.64583333333334" width="107.421875" height="146.25" class="panel"/>
+            <g transform="rotate(-90 63.7109375 276.77083333333337)">
+                <text x="63.7109375" y="272.77083333333337" class="label">
                     7
                 </text>
-                <text x="107.33072916666666" y="222.75520833333334" class="dimension">
-                    17 3/8" x 4 7/8"
+                <text x="63.7109375" y="284.77083333333337" class="dimension">
+                    20 5/8" x 27"
                 </text>
             </g>
-            <!-- Panel 6 -->
-            <rect x="153.22916666666666" y="99.375" width="11.71875" height="124.58333333333334" 
-                  class="panel grain-v"/>
-            <g transform="rotate(-90 159.08854166666666 161.66666666666669)">
-                <text x="159.08854166666666" y="161.66666666666669" class="label">
-                    6
+            <!-- Panel 8-1 -->
+            <rect x="10.0" y="57.395833333333336" width="74.21875" height="146.25" class="panel"/>
+            <g transform="rotate(-90 47.109375 130.52083333333334)">
+                <text x="47.109375" y="126.52083333333334" class="label">
+                    8-1
                 </text>
-                <text x="159.08854166666666" y="173.66666666666669" class="dimension">
-                    2 1/4" x 23"
-                </text>
-            </g>
-            <!-- Panel 6 -->
-            <rect x="165.59895833333331" y="99.375" width="11.71875" height="124.58333333333334" 
-                  class="panel grain-v"/>
-            <g transform="rotate(-90 171.45833333333331 161.66666666666669)">
-                <text x="171.45833333333331" y="161.66666666666669" class="label">
-                    6
-                </text>
-                <text x="171.45833333333331" y="173.66666666666669" class="dimension">
-                    2 1/4" x 23"
+                <text x="47.109375" y="138.52083333333334" class="dimension">
+                    14 1/4" x 27"
                 </text>
             </g>
-            <!-- Panel 6 -->
-            <rect x="177.96875" y="99.375" width="11.71875" height="124.58333333333334" 
-                  class="panel grain-v"/>
-            <g transform="rotate(-90 183.828125 161.66666666666669)">
-                <text x="183.828125" y="161.66666666666669" class="label">
-                    6
+            <!-- Panel 8-2 -->
+            <rect x="84.21875" y="57.395833333333336" width="74.21875" height="146.25" class="panel"/>
+            <g transform="rotate(-90 121.328125 130.52083333333334)">
+                <text x="121.328125" y="126.52083333333334" class="label">
+                    8-2
                 </text>
-                <text x="183.828125" y="173.66666666666669" class="dimension">
-                    2 1/4" x 23"
+                <text x="121.328125" y="138.52083333333334" class="dimension">
+                    14 1/4" x 27"
                 </text>
             </g>
+            <!-- Panel 10-1 -->
+            <rect x="117.421875" y="233.4375" width="74.21875" height="116.45833333333334" class="panel"/>
+            <g transform="rotate(-90 154.53125 291.6666666666667)">
+                <text x="154.53125" y="287.6666666666667" class="label">
+                    10-1
+                </text>
+                <text x="154.53125" y="299.6666666666667" class="dimension">
+                    14 1/4" x 21 1/2"
+                </text>
+            </g>
+            <!-- Panel 10-2 -->
+            <rect x="158.4375" y="116.97916666666667" width="74.21875" height="116.45833333333334" class="panel"/>
+            <g transform="rotate(-90 195.546875 175.20833333333334)">
+                <text x="195.546875" y="171.20833333333334" class="label">
+                    10-2
+                </text>
+                <text x="195.546875" y="183.20833333333334" class="dimension">
+                    14 1/4" x 21 1/2"
+                </text>
+            </g>
+            <!-- Panel 9-1 -->
+            <rect x="188.38541666666666" y="413.5416666666667" width="60.546875" height="116.45833333333334" class="panel"/>
+            <g transform="rotate(-90 218.65885416666666 471.77083333333337)">
+                <text x="218.65885416666666" y="467.77083333333337" class="label">
+                    9-1
+                </text>
+                <text x="218.65885416666666" y="479.77083333333337" class="dimension">
+                    11 5/8" x 21 1/2"
+                </text>
+            </g>
+            <!-- Panel 9-2 -->
+            <rect x="191.640625" y="297.08333333333337" width="60.546875" height="116.45833333333334" class="panel"/>
+            <g transform="rotate(-90 221.9140625 355.31250000000006)">
+                <text x="221.9140625" y="351.31250000000006" class="label">
+                    9-2
+                </text>
+                <text x="221.9140625" y="363.31250000000006" class="dimension">
+                    11 5/8" x 21 1/2"
+                </text>
+            </g>
+            <!-- Efficiency indicator -->
+            <text x="210.0" y="525.0" 
+                  class="efficiency" fill="#4CAF50">
+                77.6%
+            </text>
         </g>
-        
-        <!-- Sheet info (not rotated) -->
-        <text x="270.0" y="320.0" class="dimension" text-anchor="middle">
-            48.0" x 96.0" Sheet - Efficiency: 54.0%
-        </text>
         </svg>
         </div>
         
-        <div class="cutting-instructions">
-            <h3>Cutting Instructions</h3>
+        <div class="instructions">
+            <h2 style="background: #666;">CUTTING INSTRUCTIONS</h2>
             <ol>
-                <li>    → Panel 8 - Cabinet #8 (10 3/4" x 35")</li>
-                <li>1. Cross-cut at 10 7/8" from left edge</li>
-                <li>    → Panel 8 - Cabinet #8 (10 3/4" x 35")</li>
-                <li>2. Cross-cut at 21 3/4" from left edge</li>
-                <li>    → Panel 3 - Cabinet #3 (22 3/4" x 11 3/8")</li>
-                <li>3. Cross-cut at 44 5/8" from left edge</li>
-                <li>    → Panel 6 - Cabinet #6 (2 1/4" x 23")</li>
-                <li>4. Rip at 35 1/8" from bottom edge</li>
-                <li>    → Panel 5 - Cabinet #5 (9 1/8" x 16 3/4")</li>
-                <li>5. Cross-cut at 9 1/4" from left edge</li>
-                <li>    → Panel 5 - Cabinet #5 (9 1/8" x 16 3/4")</li>
-                <li>6. Cross-cut at 18 1/2" from left edge</li>
-                <li>    → Panel 1 - Cabinet #1 (7" x 21 1/4")</li>
-                <li>7. Cross-cut at 25 5/8" from left edge</li>
-                <li>    → Panel 1 - Cabinet #1 (7" x 21 1/4")</li>
-                <li>8. Cross-cut at 32 3/4" from left edge</li>
-                <li>    → Panel 2 - Cabinet #2 (7" x 21 1/4")</li>
-                <li>9. Cross-cut at 39 7/8" from left edge</li>
-                <li>    → Panel 2 - Cabinet #2 (7" x 21 1/4")</li>
-                <li>10. Rip at 56 1/2" from bottom edge</li>
-                <li>    → Panel 4 - Cabinet #4 (4 7/8" x 29")</li>
-                <li>11. Cross-cut at 5" from left edge</li>
-                <li>    → Panel 4 - Cabinet #4 (4 7/8" x 29")</li>
-                <li>12. Cross-cut at 10" from left edge</li>
-                <li>    → Panel 7 - Cabinet #7 (17 3/8" x 4 7/8")</li>
-                <li>13. Cross-cut at 27 1/2" from left edge</li>
-                <li>    → Panel 6 - Cabinet #6 (2 1/4" x 23")</li>
-                <li>14. Cross-cut at 29 7/8" from left edge</li>
-                <li>    → Panel 6 - Cabinet #6 (2 1/4" x 23")</li>
-                <li>15. Cross-cut at 32 1/4" from left edge</li>
-                <li>    → Panel 6 - Cabinet #6 (2 1/4" x 23")</li>
-                <li>
-Usable waste: Approximately 46 1/16" square</li>
-                <li>(Save for drawer bottoms or test pieces)</li>
+                <ul style="margin: 5px 0 5px 20px;">
+                    <li style="list-style: none;">    -> Cabinet #11: 17 1/8" x 33 1/4"</li>
+                </ul>
+                <li>1. Cross-cut at 17 1/8" from left edge</li>
+                <ul style="margin: 5px 0 5px 20px;">
+                    <li style="list-style: none;">    -> Cabinet #11: 17 1/8" x 33 1/4"</li>
+                </ul>
+                <li>2. Cross-cut at 34 1/4" from left edge</li>
+                <ul style="margin: 5px 0 5px 20px;">
+                    <li style="list-style: none;">    -> Cabinet #9: 11 5/8" x 21 1/2"</li>
+                </ul>
+                <li>3. Rip at 21 1/2" from bottom edge</li>
+                <li>4. Cross-cut at 34 7/8" from left edge</li>
+                <ul style="margin: 5px 0 5px 20px;">
+                    <li style="list-style: none;">    -> Cabinet #9: 11 5/8" x 21 1/2"</li>
+                </ul>
+                <li>5. Rip at 33 3/16" from bottom edge</li>
+                <ul style="margin: 5px 0 5px 20px;">
+                    <li style="list-style: none;">    -> Cabinet #7: 20 5/8" x 27"</li>
+                </ul>
+                <li>6. Cross-cut at 20 5/8" from left edge</li>
+                <ul style="margin: 5px 0 5px 20px;">
+                    <li style="list-style: none;">    -> Cabinet #10: 14 1/4" x 21 1/2"</li>
+                </ul>
+                <li>7. Rip at 54 13/16" from bottom edge</li>
+                <li>8. Cross-cut at 28 1/2" from left edge</li>
+                <ul style="margin: 5px 0 5px 20px;">
+                    <li style="list-style: none;">    -> Cabinet #10: 14 1/4" x 21 1/2"</li>
+                </ul>
+                <li>9. Rip at 60 3/16" from bottom edge</li>
+                <ul style="margin: 5px 0 5px 20px;">
+                    <li style="list-style: none;">    -> Cabinet #8: 14 1/4" x 27"</li>
+                </ul>
+                <li>10. Cross-cut at 14 1/4" from left edge</li>
+                <ul style="margin: 5px 0 5px 20px;">
+                    <li style="list-style: none;">    -> Cabinet #8: 14 1/4" x 27"</li>
+                </ul>
             </ol>
+            <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #ddd;">
+                <p style="font-style: italic; color: #666;">Sheet efficiency: 77.6%</p>
+                <p style="font-style: italic; color: #666;">Usable waste pieces: 3</p>
+                <li>(Save for drawer bottoms or small parts)</li>
+            </div>
+        </div>
+    </div>
+    <div class="page">
+        <div class="header">
+            <h1>SHEET #2 - Paint Grade</h1>
+            <div class="info-grid">
+                <div><strong>Sheet Size:</strong> 48.0" x 96.0"</div>
+                <div><strong>Panels on Sheet:</strong> 11</div>
+                <div><strong>Material Usage:</strong> 69.9% (MEDIUM)</div>
+                <div><strong>Waste:</strong> 9.63 sq ft</div>
+            </div>
         </div>
         
-        <div class="panel-list">
-            <h3>Panels on this Sheet:</h3>
-            <ul>
-                <li>Cabinet 8: 10 3/4" x 35" (vertical)</li>
-                <li>Cabinet 8: 10 3/4" x 35" (vertical)</li>
-                <li>Cabinet 3: 22 3/4" x 11 3/8" (vertical)</li>
-                <li>Cabinet 6: 2 1/4" x 23" (vertical)</li>
-                <li>Cabinet 5: 9 1/8" x 16 3/4" (vertical)</li>
-                <li>Cabinet 5: 9 1/8" x 16 3/4" (vertical)</li>
-                <li>Cabinet 1: 7" x 21 1/4" (vertical)</li>
-                <li>Cabinet 1: 7" x 21 1/4" (vertical)</li>
-                <li>Cabinet 2: 7" x 21 1/4" (vertical)</li>
-                <li>Cabinet 2: 7" x 21 1/4" (vertical)</li>
-                <li>Cabinet 4: 4 7/8" x 29" (vertical)</li>
-                <li>Cabinet 4: 4 7/8" x 29" (vertical)</li>
-                <li>Cabinet 7: 17 3/8" x 4 7/8" (vertical)</li>
-                <li>Cabinet 6: 2 1/4" x 23" (vertical)</li>
-                <li>Cabinet 6: 2 1/4" x 23" (vertical)</li>
-                <li>Cabinet 6: 2 1/4" x 23" (vertical)</li>
-            </ul>
+        <h2>CUTTING DIAGRAM</h2>
+        <div class="diagram">
+            <svg width="540.0" height="270.0" viewBox="0 0 540.0 270.0" xmlns="http://www.w3.org/2000/svg">
+        <style>
+            .sheet { fill: #f5f5f5; stroke: #333; stroke-width: 2; }
+            .panel { fill: #e8f4f8; stroke: #2196F3; stroke-width: 1; }
+            .panel-rotated { fill: #f0e8f8; stroke: #9C27B0; stroke-width: 1; }
+            .free-rect { fill: #ffebe8; stroke: #ff5722; stroke-width: 0.5; stroke-dasharray: 2,2; opacity: 0.3; }
+            .label { font-family: Arial; font-size: 10px; text-anchor: middle; }
+            .dimension { font-family: Arial; font-size: 8px; fill: #666; }
+            .efficiency { font-family: Arial; font-size: 14px; font-weight: bold; fill: #2196F3; }
+        </style>
+        
+        <!-- Apply rotation transform -->
+        <g transform="rotate(90 270.0 135.0) translate(135.0 -135.0)">
+            <!-- Sheet outline -->
+            <rect x="10" y="10" width="250.0" height="520.0" class="sheet"/>
+            
+            <rect x="131.74479166666666" y="10.0" width="70.3125" height="227.5" class="free-rect"/>
+            <rect x="74.453125" y="10.0" width="127.60416666666666" height="170.625" class="free-rect"/>
+            <rect x="74.453125" y="10.0" width="185.546875" height="140.83333333333334" class="free-rect"/>
+            <rect x="67.29166666666666" y="104.79166666666667" width="134.765625" height="75.83333333333334" class="free-rect"/>
+            <rect x="67.29166666666666" y="104.79166666666667" width="192.70833333333331" height="46.04166666666667" class="free-rect"/>
+            <!-- Panel 5-1 -->
+            <rect x="10.0" y="317.39583333333337" width="57.291666666666664" height="212.60416666666669" class="panel"/>
+            <g transform="rotate(-90 38.64583333333333 423.69791666666674)">
+                <text x="38.64583333333333" y="419.69791666666674" class="label">
+                    5-1
+                </text>
+                <text x="38.64583333333333" y="431.69791666666674" class="dimension">
+                    11" x 39 1/4"
+                </text>
+            </g>
+            <!-- Panel 5-2 -->
+            <rect x="10.0" y="104.79166666666667" width="57.291666666666664" height="212.60416666666669" class="panel"/>
+            <g transform="rotate(-90 38.64583333333333 211.09375)">
+                <text x="38.64583333333333" y="207.09375" class="label">
+                    5-2
+                </text>
+                <text x="38.64583333333333" y="219.09375" class="dimension">
+                    11" x 39 1/4"
+                </text>
+            </g>
+            <!-- Panel 2-1 -->
+            <rect x="67.29166666666666" y="383.75" width="65.10416666666666" height="146.25" class="panel"/>
+            <g transform="rotate(-90 99.84374999999999 456.875)">
+                <text x="99.84374999999999" y="452.875" class="label">
+                    2-1
+                </text>
+                <text x="99.84374999999999" y="464.875" class="dimension">
+                    12 1/2" x 27"
+                </text>
+            </g>
+            <!-- Panel 2-2 -->
+            <rect x="132.39583333333331" y="383.75" width="65.10416666666666" height="146.25" class="panel"/>
+            <g transform="rotate(-90 164.94791666666663 456.875)">
+                <text x="164.94791666666663" y="452.875" class="label">
+                    2-2
+                </text>
+                <text x="164.94791666666663" y="464.875" class="dimension">
+                    12 1/2" x 27"
+                </text>
+            </g>
+            <!-- Panel 4 -->
+            <rect x="67.29166666666666" y="267.2916666666667" width="76.171875" height="116.45833333333334" class="panel"/>
+            <g transform="rotate(-90 105.37760416666666 325.52083333333337)">
+                <text x="105.37760416666666" y="321.52083333333337" class="label">
+                    4
+                </text>
+                <text x="105.37760416666666" y="333.52083333333337" class="dimension">
+                    14 5/8" x 21 1/2"
+                </text>
+            </g>
+            <!-- Panel 1-1 -->
+            <rect x="197.5" y="383.75" width="58.59375" height="146.25" class="panel"/>
+            <g transform="rotate(-90 226.796875 456.875)">
+                <text x="226.796875" y="452.875" class="label">
+                    1-1
+                </text>
+                <text x="226.796875" y="464.875" class="dimension">
+                    11 1/4" x 27"
+                </text>
+            </g>
+            <!-- Panel 1-2 -->
+            <rect x="143.46354166666666" y="237.5" width="58.59375" height="146.25" class="panel"/>
+            <g transform="rotate(-90 172.76041666666666 310.625)">
+                <text x="172.76041666666666" y="306.625" class="label">
+                    1-2
+                </text>
+                <text x="172.76041666666666" y="318.625" class="dimension">
+                    11 1/4" x 27"
+                </text>
+            </g>
+            <!-- Panel 6-1 -->
+            <rect x="67.29166666666666" y="180.625" width="64.453125" height="86.66666666666667" class="panel"/>
+            <g transform="rotate(-90 99.51822916666666 223.95833333333334)">
+                <text x="99.51822916666666" y="219.95833333333334" class="label">
+                    6-1
+                </text>
+                <text x="99.51822916666666" y="231.95833333333334" class="dimension">
+                    12 3/8" x 16"
+                </text>
+            </g>
+            <!-- Panel 6-2 -->
+            <rect x="10.0" y="18.125" width="64.453125" height="86.66666666666667" class="panel"/>
+            <g transform="rotate(-90 42.2265625 61.458333333333336)">
+                <text x="42.2265625" y="57.458333333333336" class="label">
+                    6-2
+                </text>
+                <text x="42.2265625" y="69.45833333333334" class="dimension">
+                    12 3/8" x 16"
+                </text>
+            </g>
+            <!-- Panel 3-1 -->
+            <rect x="202.05729166666666" y="267.2916666666667" width="44.27083333333333" height="116.45833333333334" class="panel"/>
+            <g transform="rotate(-90 224.19270833333331 325.52083333333337)">
+                <text x="224.19270833333331" y="321.52083333333337" class="label">
+                    3-1
+                </text>
+                <text x="224.19270833333331" y="333.52083333333337" class="dimension">
+                    8 1/2" x 21 1/2"
+                </text>
+            </g>
+            <!-- Panel 3-2 -->
+            <rect x="202.05729166666666" y="150.83333333333334" width="44.27083333333333" height="116.45833333333334" class="panel"/>
+            <g transform="rotate(-90 224.19270833333331 209.0625)">
+                <text x="224.19270833333331" y="205.0625" class="label">
+                    3-2
+                </text>
+                <text x="224.19270833333331" y="217.0625" class="dimension">
+                    8 1/2" x 21 1/2"
+                </text>
+            </g>
+            <!-- Efficiency indicator -->
+            <text x="210.0" y="525.0" 
+                  class="efficiency" fill="#FF9800">
+                69.9%
+            </text>
+        </g>
+        </svg>
+        </div>
+        
+        <div class="instructions">
+            <h2 style="background: #666;">CUTTING INSTRUCTIONS</h2>
+            <ol>
+                <ul style="margin: 5px 0 5px 20px;">
+                    <li style="list-style: none;">    -> Cabinet #5: 11" x 39 1/4"</li>
+                </ul>
+                <li>1. Cross-cut at 11" from left edge</li>
+                <ul style="margin: 5px 0 5px 20px;">
+                    <li style="list-style: none;">    -> Cabinet #2: 12 1/2" x 27"</li>
+                </ul>
+                <li>2. Cross-cut at 23 1/2" from left edge</li>
+                <ul style="margin: 5px 0 5px 20px;">
+                    <li style="list-style: none;">    -> Cabinet #2: 12 1/2" x 27"</li>
+                </ul>
+                <li>3. Cross-cut at 36" from left edge</li>
+                <ul style="margin: 5px 0 5px 20px;">
+                    <li style="list-style: none;">    -> Cabinet #1: 11 1/4" x 27"</li>
+                </ul>
+                <li>4. Rip at 27" from bottom edge</li>
+                <li>5. Cross-cut at 11" from left edge</li>
+                <ul style="margin: 5px 0 5px 20px;">
+                    <li style="list-style: none;">    -> Cabinet #4: 14 5/8" x 21 1/2"</li>
+                </ul>
+                <li>6. Cross-cut at 25 5/8" from left edge</li>
+                <ul style="margin: 5px 0 5px 20px;">
+                    <li style="list-style: none;">    -> Cabinet #1: 11 1/4" x 27"</li>
+                </ul>
+                <li>7. Cross-cut at 36 7/8" from left edge</li>
+                <ul style="margin: 5px 0 5px 20px;">
+                    <li style="list-style: none;">    -> Cabinet #3: 8 1/2" x 21 1/2"</li>
+                </ul>
+                <li>8. Rip at 39 3/16" from bottom edge</li>
+                <ul style="margin: 5px 0 5px 20px;">
+                    <li style="list-style: none;">    -> Cabinet #5: 11" x 39 1/4"</li>
+                </ul>
+                <li>9. Rip at 48 1/2" from bottom edge</li>
+                <li>10. Cross-cut at 11" from left edge</li>
+                <ul style="margin: 5px 0 5px 20px;">
+                    <li style="list-style: none;">    -> Cabinet #6: 12 3/8" x 16"</li>
+                </ul>
+                <li>11. Cross-cut at 36 7/8" from left edge</li>
+                <ul style="margin: 5px 0 5px 20px;">
+                    <li style="list-style: none;">    -> Cabinet #3: 8 1/2" x 21 1/2"</li>
+                </ul>
+                <li>12. Rip at 78 1/2" from bottom edge</li>
+                <ul style="margin: 5px 0 5px 20px;">
+                    <li style="list-style: none;">    -> Cabinet #6: 12 3/8" x 16"</li>
+                </ul>
+            </ol>
+            <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #ddd;">
+                <p style="font-style: italic; color: #666;">Sheet efficiency: 69.9%</p>
+                <p style="font-style: italic; color: #666;">Usable waste pieces: 5</p>
+                <li>(Save for drawer bottoms or small parts)</li>
+            </div>
         </div>
     </div>
-
-    <div class="summary">
-        <h2>Summary</h2>
-        <p><strong>Total Sheets Required:</strong></p>
-        <ul>
-            <li>Wood: 1 sheet</li>
-        </ul>
-        <p><strong>Overall Efficiency:</strong> 54.0%</p>
-        <p><strong>Total Panels:</strong> 16</p>
-    </div>
-    
-    <div class="footer">
-        <p>anyDoor Report generated: 2025-09-08 07:57:03 AM</p>
+    <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ccc; text-align: center; font-size: 12px; color: #666;">
+        <p>anyDoor Panel Optimizer (Maxrects Algorithm) - Generated: 2025-09-08 09:04:49 AM</p>
     </div>
 </body>
 </html>

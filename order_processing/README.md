@@ -59,13 +59,33 @@ Utility for converting HTML reports to PDFs using Selenium.
 
 ## Step-by-Step Process
 
-### Step 1: Extract Data from PDF
+### Step 1: Extract Data from PDF (Claude Manual Extraction)
 ```bash
 python 2_extract_from_pdf.py
 ```
 This creates:
-- `extraction_template.json` - Fill this with data from PDF
-- `extraction_checklist.txt` - Use as guide for manual extraction
+- `extraction_template.json` - Empty template for Claude to fill
+- `extraction_checklist.txt` - Guide for systematic extraction
+
+**"Manual Extraction" Process for Claude:**
+1. Run the script to create empty templates
+2. Read/analyze the PDF using your capabilities (you may use pdfplumber to READ the text)
+3. Fill the `extraction_template.json` with data YOU extract from the PDF
+4. Customer PDFs are complex and varied - that's why Claude does this manually
+
+**THE THREE-STEP RULE:**
+1. **RUN** `2_extract_from_pdf.py` - Creates empty template
+2. **STOP** - DO NOT run any other scripts yet
+3. **MANUALLY** fill the template with data from the PDF
+4. **ONLY THEN** run `process_extracted_order.py`
+
+**SIGNS YOU'RE DOING IT WRONG:**
+- Creating new .py files
+- Running automation/extraction scripts
+- Using old extraction data
+- Not filling the template yourself
+
+**Note:** Don't create new extraction scripts - PDFs are too varied for Python automation. Claude's ability to read and understand complex PDFs is why manual extraction is required.
 
 ### Step 2: Process the Order
 ```bash
@@ -182,6 +202,19 @@ order_processing/
 ```
 
 ## Workflow for New Orders
+
+**⚠️ CRITICAL: ALWAYS PROCESS AS BRAND NEW ⚠️**
+Every order in `need to process/` MUST be extracted fresh from the PDF.
+- NEVER use old extraction templates or existing data
+- NEVER rely on hardcoded scripts like `process_benjamin_franklin_order.py`
+- ALWAYS extract directly from the customer's submitted PDF
+- Old data introduces errors - each order must start from scratch
+
+**What "Manual Extraction" Means:**
+- Claude reads and analyzes the PDF to extract data
+- NOT automated Python PDF parsing (too unreliable for varied customer formats)
+- NOT human extraction (Claude does the extraction)
+- Leverages Claude's ability to understand complex/varied PDF formats
 
 1. **Place new PDF in `need to process/` folder**
    - User places: `order_processing/need to process/smith_kitchen_order.pdf`

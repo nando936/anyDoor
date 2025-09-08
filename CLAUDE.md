@@ -3,6 +3,34 @@
 ## Project Overview
 AnyDoor - Door monitoring and control project
 
+## Order Processing Instructions
+
+### WHEN USER SAYS "PROCESS ORDER":
+1. **FORGET EVERYTHING** - Act as if you've NEVER seen these files before
+2. **NO "I ALREADY..."** - Never say "I already ran" or "I already extracted"
+3. **START AT STEP 1** - Even if you think you did it before
+4. **READ** `order_processing/README.md` - This is the GOVERNING DOCUMENT
+5. **FOLLOW** those instructions from the beginning
+
+### KEY REMINDERS (Full details in README.md):
+- **Manual extraction** = Claude reads PDF and fills template (not scripts)
+- **No new scripts** = Use existing tools only
+- **Start fresh** = Never use old data or templates
+- **Three-step rule**: Extract → Process → Verify
+
+### ⚠️ RUSH CHECK:
+**SLOW IS FAST** - Following README.md correctly first time > restarting 3 times
+- Creating scripts? STOP - you're rushing
+- Automating extraction? STOP - you're rushing  
+- Skipping steps? STOP - you're rushing
+
+### 📍 WHERE TO UPDATE WHEN ISSUES ARISE:
+- **Order processing workflow issues** → Update `order_processing/README.md`
+- **Claude-specific behavior issues** → Update this file (CLAUDE.md)
+- **Technical/code issues** → Fix the actual scripts
+
+**GOVERNING DOCUMENT:** `order_processing/README.md` - Always defer to it for order processing
+
 ## Quick Commands
 - `*` - Check comments.txt for tasks and process them
 

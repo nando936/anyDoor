@@ -32,6 +32,7 @@ import time
 from datetime import datetime
 import shutil
 from panel_optimizer import PanelOptimizer, Panel
+from panel_optimizer_maxrects import MaxrectsOptimizer, generate_optimizer_report_maxrects
 
 # Set encoding for Windows
 sys.stdout.reconfigure(encoding='utf-8')
@@ -1139,9 +1140,18 @@ def generate_panel_optimizer_html(customer_info, door_items, door_style, door_sp
                 grain_direction="vertical"
             ))
     
-    # Run optimization
-    optimizer = PanelOptimizer()
-    sheets = optimizer.optimize(panels)
+    # Run optimization - Use Maxrects algorithm for better efficiency
+    # Can switch back to old algorithm by changing USE_MAXRECTS to False
+    USE_MAXRECTS = True  # Set to False to use old shelf algorithm
+    
+    if USE_MAXRECTS:
+        optimizer = MaxrectsOptimizer(kerf=0.125)
+        # Enable rotation only for MDF panels (grain doesn't matter)
+        optimizer.enable_rotation = False  # Default to no rotation
+        sheets = optimizer.optimize(panels)
+    else:
+        optimizer = PanelOptimizer(kerf=0.125)
+        sheets = optimizer.optimize(panels)
     
     # Generate HTML report
     html = f"""<!DOCTYPE html>
@@ -1413,7 +1423,24 @@ def process_order(customer_info, door_items, door_style, output_prefix, source_p
     
     # 4. Generate panel optimizer
     print("\n4. Generating Panel Optimizer Report...")
-    panel_optimizer_html = generate_panel_optimizer_html(customer_info, door_items, door_style, door_specs)
+    # Use the new Maxrects optimizer with better efficiency
+    USE_MAXRECTS = True  # Set to False to use old optimizer
+    
+    if USE_MAXRECTS:
+        # Use new Maxrects algorithm
+        settings = {
+            'kerf': 0.125,
+            'sheet_width': 48.0,
+            'sheet_height': 96.0,
+            'enable_rotation': False  # Default to no rotation (grain matters)
+        }
+        panel_optimizer_html = generate_optimizer_report_maxrects(customer_info, door_items, door_style, door_specs, settings)
+        print("   [OK] Using Maxrects algorithm for optimization")
+    else:
+        # Use old shelf algorithm
+        panel_optimizer_html = generate_panel_optimizer_html(customer_info, door_items, door_style, door_specs)
+        print("   [OK] Using shelf packing algorithm")
+    
     panel_optimizer_file = os.path.join(output_folder, "panel_optimizer.html")
     with open(panel_optimizer_file, 'w', encoding='utf-8') as f:
         f.write(panel_optimizer_html)
