@@ -1,0 +1,358 @@
+COMPLETE CABINET ANALYSIS GUIDE: FROM PDF EXTRACTION TO OPENING VERIFICATION
+==============================================================================
+
+⚠️ CRITICAL WARNING ⚠️
+=======================
+**SLOW AND CAREFUL ANALYSIS IS MANDATORY**
+- ONE MEASUREMENT ERROR = HUNDREDS/THOUSANDS OF DOLLARS IN WASTE
+- RUSHING = GUARANTEED MISTAKES
+- EACH DIMENSION MUST BE VERIFIED 100%
+- MANUFACTURING CANNOT FIX WRONG MEASUREMENTS
+
+**GOLDEN RULE: SLOW IS FAST - CAREFUL IS CORRECT**
+
+═══════════════════════════════════════════════════════════════════════
+
+PART 1: EXTRACTING PAGES FROM PDF
+==================================
+
+PREREQUISITES:
+--------------
+- PDF file location: \\vmware-host\Shared Folders\suarez group qb\customers\raised panel\Measures-YYYY-MM-DD(HH-MM)\
+- Extraction script location: \\vmware-host\Shared Folders\suarez group qb\customers\raised panel\cabinet_door_tools\extract_any_page.py
+
+STEP-BY-STEP EXTRACTION PROCESS:
+---------------------------------
+
+1. **CREATE SUBFOLDER FOR THE PAGE**
+```bash
+cd "//vmware-host/Shared Folders/suarez group qb/customers/raised panel/Measures-YYYY-MM-DD(HH-MM)/"
+mkdir page_XX  # Replace XX with page number
+```
+
+2. **EXTRACT THE PAGE**
+```bash
+cd page_XX
+python "//vmware-host/Shared Folders/suarez group qb/customers/raised panel/cabinet_door_tools/extract_any_page.py" "../Measures-YYYY-MM-DD(HH-MM).pdf" XX
+```
+
+3. **VERIFY EXTRACTION**
+```bash
+ls -la
+# Should show: page_XX.png (high resolution 1836 x 2376 pixels at 3x scale)
+```
+
+═══════════════════════════════════════════════════════════════════════
+
+PART 2: MANDATORY INITIAL NOTES (NEVER SKIP)
+=============================================
+
+**CREATE DETAILED NOTES BEFORE ANY ANALYSIS:**
+
+```
+PAGE XX INITIAL OBSERVATION NOTES
+==================================
+START DATE: [YYYY-MM-DD]
+START TIME: [HH:MM:SS]
+
+CABINET TYPE:
+[ ] Upper Cabinet (wall-mounted, no toe kick)
+[ ] Base Cabinet (floor-standing, has toe kick)
+[ ] Tall/Full Height Cabinet (floor to ceiling)
+
+GREEN LINES OBSERVED:
+- Vertical lines seen: [describe location of each]
+- Horizontal lines seen: [describe location of each]
+
+SUSPECTED MEASUREMENTS (UNVERIFIED):
+- Vertical 1: Appears to be _____ (location: ___)
+- Vertical 2: Appears to be _____ (location: ___)
+- Horizontal 1: Appears to be _____ (location: ___)
+- Horizontal 2: Appears to be _____ (location: ___)
+
+CUSTOMER NOTES VISIBLE:
+- Room name: _____
+- Hinge type: _____
+- Special notes: _____
+- Labels: _____
+
+AREAS REQUIRING ZOOM VERIFICATION:
+1. [specific coordinate area for measurement 1]
+2. [specific coordinate area for measurement 2]
+3. [etc.]
+```
+
+**DO NOT PROCEED WITHOUT COMPLETING THESE NOTES**
+
+═══════════════════════════════════════════════════════════════════════
+
+PART 3: CAREFUL, SLOW, THOROUGH DIMENSION SEARCH
+==================================================
+
+**CRITICAL: THIS IS NOT SYSTEMATIC - IT'S CAREFUL AND THOROUGH**
+
+**SLOW OBSERVATION PROCESS:**
+
+1. **CAREFUL FULL IMAGE STUDY**
+   - Look at the ENTIRE image slowly
+   - Let your eyes adjust to see ALL details
+   - Don't follow a pattern - look naturally
+   - Green lines have measurements - find them ALL
+   - Some measurements are obvious, others are subtle
+   - Document EVERYTHING you see
+
+2. **THOROUGH VERTICAL INSPECTION**
+   - Look at EACH vertical green line carefully
+   - Numbers can appear ANYWHERE along the line
+   - Could be at top, middle, bottom, or multiple places
+   - A single vertical line might have MULTIPLE measurements
+   - Document every single number you see
+
+3. **THOROUGH HORIZONTAL INSPECTION**
+   - Look at EACH horizontal green line carefully
+   - Numbers can be ABOVE, BELOW, or ON the line
+   - Check the ENTIRE length of each line
+   - Don't assume - LOOK everywhere
+   - Document every single number you see
+
+4. **CAREFUL RE-CHECK OF EVERYTHING**
+   - Look again at the whole image
+   - Did you miss any numbers?
+   - Are there measurements you overlooked?
+   - Sometimes measurements are partially visible
+   - NEVER ASSUME - always verify
+
+═══════════════════════════════════════════════════════════════════════
+
+PART 4: ZOOM VERIFICATION PROTOCOL (NEVER SKIP ANY LEVEL)
+===========================================================
+
+**EVERY MEASUREMENT REQUIRES 4-LEVEL VERIFICATION:**
+
+**LEVEL 1 - CONTEXT ZOOM (Understand location)**
+```python
+# Zoom out to see measurement in relation to cabinet
+zoom_area = img[y-300:y+300, x-300:x+300]
+# REQUIREMENT: Understand context fully
+# DOCUMENT: Where is this measurement on the cabinet?
+```
+
+**LEVEL 2 - READING ZOOM (Read main number)**
+```python
+# Zoom to see number clearly
+zoom_area = img[y-100:y+100, x-100:x+100]
+# REQUIREMENT: Read number multiple times before recording
+# DOCUMENT: What is the main number (ignoring fractions)?
+```
+
+**LEVEL 3 - FRACTION ZOOM (MOST CRITICAL)**
+```python
+# Extreme zoom for fractions
+zoom_area = img[y-50:y+50, x-50:x+50]
+# REQUIREMENT: Check for ALL common fractions
+# CHECK LIST:
+#   [ ] 1/2    [ ] 1/4    [ ] 3/4
+#   [ ] 1/8    [ ] 3/8    [ ] 5/8    [ ] 7/8
+#   [ ] 1/16   [ ] 3/16   [ ] 5/16   [ ] 7/16
+#   [ ] 9/16   [ ] 11/16  [ ] 13/16  [ ] 15/16
+# DOCUMENT: Exact fraction found (or "no fraction")
+```
+
+**LEVEL 4 - VERIFICATION ZOOM (Confirm reading)**
+```python
+# Different angle to confirm
+zoom_area = img[y-40:y+40, x-30:x+50]
+# REQUIREMENT: Must match Level 3 reading exactly
+# If mismatch: RESTART from Level 1
+```
+
+**VERIFICATION LOG TEMPLATE:**
+```
+Measurement #1 Verification:
+- Location: [exact coordinates]
+- Level 1: Confirmed location at [describe]
+- Level 2: Main number reads: [number]
+- Level 3: Fraction verified as: [fraction or "none"]
+- Level 4: Confirmed reading: [final measurement]
+- Confidence: [Must be 100% or re-verify]
+```
+
+═══════════════════════════════════════════════════════════════════════
+
+PART 5: DIMENSION COUNT VERIFICATION (CRITICAL STEP)
+======================================================
+
+**⚠️ MANDATORY VERIFICATION BEFORE PROCEEDING ⚠️**
+
+After finding all measurements, you MUST verify the count:
+
+```
+DIMENSION COUNT SUMMARY:
+========================
+Total Vertical Measurements Found: _____
+List: [measurement 1, measurement 2, ...]
+
+Total Horizontal Measurements Found: _____
+List: [measurement 1, measurement 2, ...]
+
+OPENING CALCULATION VERIFICATION:
+Vertical count × Horizontal count = Total Openings
+_____ × _____ = _____
+
+Does this make sense for the cabinet type?
+[ ] YES - Proceed to create openings list
+[ ] NO - MUST GO BACK AND SEARCH AGAIN
+
+If NO, common issues to check:
+- Missed a measurement at edge of image
+- Measurement partially hidden
+- Two measurements very close together
+- Measurement in unexpected location
+```
+
+**NEVER PROCEED IF THE COUNT SEEMS WRONG**
+
+═══════════════════════════════════════════════════════════════════════
+
+PART 6: CUSTOMER NOTES CHECKLIST (CHECK EVERYTHING)
+=====================================================
+
+**SEARCH ENTIRE IMAGE FOR:**
+
+□ Room name (KITCHEN, BATH, LAUNDRY, etc.)
+□ Hinge type (OL, OVERLAY, INSET, 1/2 OL, FULL OL)
+□ Door style (RAISED PANEL, SHAKER, FLAT)
+□ Special hardware notes
+□ Wood species or finish
+□ Cabinet codes (B15, W3030, etc.)
+□ Installation notes
+□ Any handwritten annotations
+
+**DOCUMENT FORMAT:**
+```
+CUSTOMER NOTES FOUND:
+- Room: [exact text seen]
+- Hinge: [exact specification]
+- Style: [exact description]
+- Special: [any special instructions]
+- Other: [any other notes]
+```
+
+═══════════════════════════════════════════════════════════════════════
+
+PART 7: OPENING CALCULATION (DOUBLE-CHECK FORMULA)
+====================================================
+
+**FORMULA VERIFICATION:**
+```
+Total Openings = (# of vertical measurements) × (# of horizontal measurements)
+```
+
+**MANDATORY CHECKS:**
+1. Count vertical measurements: _____
+2. Count horizontal measurements: _____
+3. Calculate total openings: _____
+4. RE-COUNT measurements to confirm
+5. RE-CALCULATE to verify
+
+**OPENING SPECIFICATIONS FORMAT:**
+```
+Opening 1: [WIDTH] W × [HEIGHT] H  ← WIDTH FIRST, THEN HEIGHT
+Opening 2: [WIDTH] W × [HEIGHT] H
+```
+
+**⚠️ CRITICAL: ALWAYS LIST WIDTH × HEIGHT (not height × width)**
+
+═══════════════════════════════════════════════════════════════════════
+
+PART 8: CREATING ANNOTATED IMAGE (PROFESSIONAL OUTPUT)
+========================================================
+
+**REQUIREMENTS FOR ANNOTATED IMAGE:**
+
+1. **CROP WHITE SPACE**
+   - Find actual content bottom
+   - Remove unnecessary white space
+   - Keep 20px padding only
+
+2. **ADD OPENING INFORMATION WITH LARGE TEXT**
+   - Title font: 52+ points
+   - Opening font: 42+ points
+   - Notes font: 36+ points
+   - MUST be clearly readable
+
+3. **REQUIRED INFORMATION:**
+   ```
+   OPENING SIZES:
+     Opening 1: [WIDTH] W × [HEIGHT] H
+     Opening 2: [WIDTH] W × [HEIGHT] H
+
+   DIMENSIONS FOUND:
+     • Vertical: [count] measurements ([list all])
+     • Horizontal: [count] measurements ([list all])
+     • Total Openings: [vertical] × [horizontal] = [total]
+
+   CUSTOMER NOTES:
+     • Room: [from notes]
+     • Hinge: [from notes]
+     • Style: [from notes]
+
+   VERIFICATION:
+     • All measurements zoomed 4 levels
+     • All fractions confirmed
+     • Dimension count verified
+     • Processing time: [total time]
+   ```
+
+4. **TIMESTAMP INFORMATION**
+   - Start time: [when analysis began]
+   - End time: [when completed]
+   - Total time: [duration in minutes]
+
+═══════════════════════════════════════════════════════════════════════
+
+PART 9: FINAL VERIFICATION CHECKLIST (MUST COMPLETE)
+======================================================
+
+**BEFORE DECLARING COMPLETE:**
+
+□ Did I record START DATE AND TIME?
+□ Did I create detailed notes before starting?
+□ Did I search the ENTIRE image thoroughly?
+□ Did I zoom EVERY measurement to Level 4?
+□ Did I verify EVERY fraction?
+□ Did I COUNT all vertical measurements?
+□ Did I COUNT all horizontal measurements?
+□ Did I verify the opening calculation makes sense?
+□ Did I find ALL customer notes?
+□ Did I format as WIDTH × HEIGHT?
+□ Did I crop white space?
+□ Did I use large, readable fonts?
+□ Did I include dimension count in notes?
+□ Did I record END DATE AND TIME?
+□ Did I calculate TOTAL TIME spent?
+□ Am I 100% confident in EVERY measurement?
+
+**IF ANY ITEM IS UNCHECKED: START OVER**
+
+**FINAL NOTES MUST INCLUDE:**
+```
+COMPLETION SUMMARY:
+===================
+END DATE: [YYYY-MM-DD]
+END TIME: [HH:MM:SS]
+TOTAL TIME: [XX minutes]
+
+Vertical Measurements: [count] found
+Horizontal Measurements: [count] found
+Total Openings Calculated: [number]
+Confidence Level: 100%
+```
+
+═══════════════════════════════════════════════════════════════════════
+
+REMEMBER:
+=========
+RUSHING SAVES NO TIME - IT ONLY CREATES EXPENSIVE MISTAKES
+TAKE AS LONG AS NEEDED TO BE 100% ACCURATE
+EVERY MEASUREMENT MUST BE VERIFIED WITH ABSOLUTE CERTAINTY
