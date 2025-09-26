@@ -76,6 +76,15 @@ def verify_measurement_with_zoom(image_path, x, y, text, api_key):
 
     return text  # Return original if verification doesn't find anything clear
 
+def get_text_item_info(all_text_items, text_key):
+    """Safely get text item info, handling duplicates"""
+    if text_key in all_text_items:
+        info = all_text_items[text_key]
+        if isinstance(info, list):
+            return info[0]  # Return first occurrence
+        return info
+    return None
+
 def get_measurements_from_vision_api(image_path, api_key, debug_text=None):
     """Get all measurements with positions from Vision API"""
     import re
@@ -139,6 +148,8 @@ def get_measurements_from_vision_api(image_path, api_key, debug_text=None):
                 print(f"  Measurements in text: {measurement_patterns}")
 
                 # Get all individual text items with positions
+                # Store as list to handle duplicates
+                all_text_items_list = []
                 for ann in annotations[1:]:
                     text = ann['description']
                     vertices = ann['boundingPoly']['vertices']
@@ -146,7 +157,76 @@ def get_measurements_from_vision_api(image_path, api_key, debug_text=None):
                     x = sum(v.get('x', 0) for v in vertices) / 4
                     y = sum(v.get('y', 0) for v in vertices) / 4
 
-                    all_text_items[text] = {'x': x, 'y': y, 'vertices': vertices}
+                    all_text_items_list.append({
+                        'text': text,
+                        'x': x,
+                        'y': y,
+                        'vertices': vertices
+                    })
+
+                    # Also keep the dictionary for backward compatibility
+                    # But if there are duplicates, keep all positions in a list
+                    if text not in all_text_items:
+                        all_text_items[text] = {'x': x, 'y': y, 'vertices': vertices}
+                    else:
+                        # Convert to list if duplicate found
+                        if not isinstance(all_text_items[text], list):
+                            all_text_items[text] = [all_text_items[text]]
+                        all_text_items[text].append({'x': x, 'y': y, 'vertices': vertices})
+
+                # Debug: Show all text items found with numbers
+                print(f"\n  [DEBUG] All text items found (including duplicates):")
+                for item in all_text_items_list:
+                    if any(char.isdigit() for char in item['text']):
+                        print(f"    '{item['text']}' at ({item['x']:.0f}, {item['y']:.0f})")
+
+                # Show which ones are duplicates
+                print(f"\n  [DEBUG] Checking for duplicate '28 1/2' parts:")
+                twenty_eight_positions = []
+                half_positions = []
+                for item in all_text_items_list:
+                    if item['text'] == '28':
+                        twenty_eight_positions.append((item['x'], item['y']))
+                        print(f"    Found '28' at ({item['x']:.0f}, {item['y']:.0f})")
+                    elif item['text'] == '1/2':
+                        half_positions.append((item['x'], item['y']))
+                        print(f"    Found '1/2' at ({item['x']:.0f}, {item['y']:.0f})")
+
+                # Try to match the two "28 1/2" measurements based on proximity
+                if "28 1/2" in measurement_patterns:
+                    # Look for pairs of "28" and "1/2" that are close together
+                    for item in all_text_items_list:
+                        if item['text'] == '28':
+                            twenty_eight_x = item['x']
+                            twenty_eight_y = item['y']
+
+                            # Look for a "1/2" nearby
+                            for half_item in all_text_items_list:
+                                if half_item['text'] == '1/2':
+                                    # Check if Y coordinates are similar and X is close
+                                    if abs(half_item['y'] - twenty_eight_y) < 20:  # Same line
+                                        if abs(half_item['x'] - twenty_eight_x) < 150:  # Close horizontally
+                                            # Found a matching pair
+                                            avg_x = (twenty_eight_x + half_item['x']) / 2
+                                            avg_y = (twenty_eight_y + half_item['y']) / 2
+
+                                            # Check if we already added this position
+                                            already_added = False
+                                            for m in measurements:
+                                                if m['text'] == '28 1/2' and abs(m['x'] - avg_x) < 50:
+                                                    already_added = True
+                                                    break
+
+                                            if not already_added:
+                                                measurements.append({
+                                                    'text': '28 1/2',
+                                                    'x': avg_x,
+                                                    'y': avg_y,
+                                                    'width': 100,  # Estimate
+                                                    'left_bound': twenty_eight_x - 20,
+                                                    'right_bound': half_item['x'] + 40
+                                                })
+                                                print(f"  Matched '28 1/2' at ({avg_x:.0f}, {avg_y:.0f})")
 
                 # Now match measurements to positions
                 for measurement in measurement_patterns:
@@ -154,12 +234,17 @@ def get_measurements_from_vision_api(image_path, api_key, debug_text=None):
                     if re.match(r'^\d+$', measurement):
                         # Whole number - should exist as-is
                         if measurement in all_text_items:
-                            measurements.append({
-                                'text': measurement,
-                                'x': all_text_items[measurement]['x'],
-                                'y': all_text_items[measurement]['y']
-                            })
-                            print(f"  Matched whole number '{measurement}' at ({all_text_items[measurement]['x']:.0f}, {all_text_items[measurement]['y']:.0f})")
+                            info = get_text_item_info(all_text_items, measurement)
+                            if info:
+                                measurements.append({
+                                    'text': measurement,
+                                    'x': info['x'],
+                                    'y': info['y'],
+                                    'width': len(measurement) * 15,  # Estimate
+                                    'left_bound': info['x'] - len(measurement) * 7,
+                                    'right_bound': info['x'] + len(measurement) * 7
+                                })
+                                print(f"  Matched whole number '{measurement}' at ({info['x']:.0f}, {info['y']:.0f})")
                         continue
 
                     # Check if this measurement exists as single item with dash format (like "31-1/4 F")
@@ -170,18 +255,28 @@ def get_measurements_from_vision_api(image_path, api_key, debug_text=None):
 
                     if dash_format in all_text_items:
                         # Found as dash format (like "31-1/4 F")
-                        measurements.append({
-                            'text': measurement,
-                            'x': all_text_items[dash_format]['x'],
-                            'y': all_text_items[dash_format]['y']
-                        })
+                        info = get_text_item_info(all_text_items, dash_format)
+                        if info:
+                            measurements.append({
+                                'text': measurement,
+                                'x': info['x'],
+                                'y': info['y'],
+                                'width': len(measurement) * 15,  # Estimate
+                                'left_bound': info['x'] - len(measurement) * 7,
+                                'right_bound': info['x'] + len(measurement) * 7
+                            })
                     elif original_format in all_text_items:
                         # Found as single item (like "5/1/2")
-                        measurements.append({
-                            'text': measurement,
-                            'x': all_text_items[original_format]['x'],
-                            'y': all_text_items[original_format]['y']
-                        })
+                        info = get_text_item_info(all_text_items, original_format)
+                        if info:
+                            measurements.append({
+                                'text': measurement,
+                                'x': info['x'],
+                                'y': info['y'],
+                                'width': len(measurement) * 15,  # Estimate
+                                'left_bound': info['x'] - len(measurement) * 7,
+                                'right_bound': info['x'] + len(measurement) * 7
+                            })
                     else:
                         # Try to find as separate parts
                         parts = measurement.split()  # e.g., ["45", "7/8"] or ["31", "1/4", "F"]
@@ -197,12 +292,17 @@ def get_measurements_from_vision_api(image_path, api_key, debug_text=None):
 
                             if dash_number in all_text_items:
                                 # Found the dash format number, get its position
-                                measurements.append({
-                                    'text': measurement,
-                                    'x': all_text_items[dash_number]['x'],
-                                    'y': all_text_items[dash_number]['y']
-                                })
-                                print(f"  Matched '{measurement}' via dash format at ({all_text_items[dash_number]['x']:.0f}, {all_text_items[dash_number]['y']:.0f})")
+                                info = get_text_item_info(all_text_items, dash_number)
+                                if info:
+                                    measurements.append({
+                                        'text': measurement,
+                                        'x': info['x'],
+                                        'y': info['y'],
+                                        'width': len(measurement) * 15,  # Estimate
+                                        'left_bound': info['x'] - len(measurement) * 7,
+                                        'right_bound': info['x'] + len(measurement) * 7
+                                    })
+                                    print(f"  Matched '{measurement}' via dash format at ({info['x']:.0f}, {info['y']:.0f})")
                         # For measurements with multiple parts, find the closest matching parts
                         elif len(parts) == 2:
                             # Debug for "20 3/16"
@@ -230,7 +330,9 @@ def get_measurements_from_vision_api(image_path, api_key, debug_text=None):
                             second_part_pos = None
                             second_part_width = 0
                             if parts[1] in all_text_items:
-                                second_part_pos = (all_text_items[parts[1]]['x'], all_text_items[parts[1]]['y'])
+                                info = get_text_item_info(all_text_items, parts[1])
+                                if info:
+                                    second_part_pos = (info['x'], info['y'])
                                 # Get width of second part
                                 for ann in annotations[1:]:
                                     if ann['description'] == parts[1]:
@@ -284,7 +386,9 @@ def get_measurements_from_vision_api(image_path, api_key, debug_text=None):
                                         'text': measurement,
                                         'x': avg_x,
                                         'y': avg_y,
-                                        'width': actual_width  # Store actual width
+                                        'width': actual_width,  # Store actual width
+                                        'left_bound': left_x if actual_width else avg_x - 50,
+                                        'right_bound': right_x if actual_width else avg_x + 50
                                     })
                                     print(f"  Matched '{measurement}' at ({avg_x:.0f}, {avg_y:.0f})")
 
@@ -638,7 +742,12 @@ def main():
     print("=" * 80)
     print()
 
-    API_KEY = "AIzaSyBMvrdMTEh9buLqKjmr5zoUONTcj3YcSsA"
+    # Get API key from environment variable for security
+    API_KEY = os.environ.get('GOOGLE_VISION_API_KEY')
+    if not API_KEY:
+        print("[ERROR] Please set GOOGLE_VISION_API_KEY environment variable")
+        print("Example: export GOOGLE_VISION_API_KEY='your-api-key-here'")
+        return
 
     # Get image path from command line or default
     if len(sys.argv) > 1:
@@ -777,7 +886,11 @@ def main():
 
     # Save results
     results = {
-        'measurements': [{'text': m['text'], 'position': [m['x'], m['y']]} for m in measurements],
+        'measurements': [{
+            'text': m['text'],
+            'position': [m['x'], m['y']],
+            'bounds': [m.get('left_bound', m['x']-50), m.get('right_bound', m['x']+50)]
+        } for m in measurements],
         'vertical': classified['vertical'],
         'horizontal': classified['horizontal'],
         'unclassified': classified['unclassified'],

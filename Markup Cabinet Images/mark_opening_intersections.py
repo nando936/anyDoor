@@ -29,24 +29,67 @@ def find_measurement_positions(measurements, text):
             return meas['position']
     return None
 
-def find_clear_position_for_marker(intersection_x, intersection_y, width_pos, height_pos, all_measurement_positions, radius=45):
+def find_clear_position_for_marker(intersection_x, intersection_y, width_pos, height_pos, all_measurements, radius=45):
     """
     Find a clear position for the opening number marker that doesn't overlap with text.
     Try different offsets: left, right, above-left, above-right, below-left, below-right
     """
-    # Collect all text/measurement positions to avoid
-    avoid_positions = []
+    # Collect all text boundaries to avoid
+    avoid_regions = []
 
-    # Add width and height positions
-    if width_pos:
-        avoid_positions.append(width_pos)
-    if height_pos:
-        avoid_positions.append(height_pos)
-
-    # Add all other measurement positions
-    for pos in all_measurement_positions:
+    # Helper to add a measurement's bounds to avoid regions
+    def add_measurement_bounds(meas_text, pos):
         if pos:
-            avoid_positions.append(pos)
+            # Find the measurement in all_measurements to get its bounds
+            for m in all_measurements:
+                if m['text'] == meas_text and 'bounds' in m:
+                    left_bound, right_bound = m['bounds']
+                    # Create a region from left to right bound, with vertical padding
+                    avoid_regions.append({
+                        'left': left_bound,
+                        'right': right_bound,
+                        'top': pos[1] - 20,
+                        'bottom': pos[1] + 20,
+                        'center': pos
+                    })
+                    return
+            # Fallback if bounds not found
+            avoid_regions.append({
+                'left': pos[0] - 70,
+                'right': pos[0] + 70,
+                'top': pos[1] - 20,
+                'bottom': pos[1] + 20,
+                'center': pos
+            })
+
+    # Extract width and height text from the opening specification if provided
+    width_text = None
+    height_text = None
+
+    # Check if we have opening info passed in (will have 'specification' key)
+    opening_info = None
+    for item in all_measurements:
+        if 'specification' in item:
+            opening_info = item
+            # Extract width and height from specification
+            parts = item['specification'].replace('×', 'x').split(' x ')
+            if len(parts) == 2:
+                width_text = item.get('width', parts[0].strip())
+                height_text = item.get('height', parts[1].strip())
+            break
+
+    # Add measurement regions to avoid
+    if width_text and width_pos:
+        add_measurement_bounds(width_text, width_pos)
+    if height_text and height_pos:
+        add_measurement_bounds(height_text, height_pos)
+
+    # Also add all other measurements to avoid
+    for m in all_measurements:
+        if 'text' in m and 'position' in m:
+            # Skip the width and height of current opening
+            if m['text'] != width_text and m['text'] != height_text:
+                add_measurement_bounds(m['text'], m['position'])
 
     # Try different offset positions in order of preference
     offset_distance = 80  # Distance to offset the marker
@@ -68,13 +111,20 @@ def find_clear_position_for_marker(intersection_x, intersection_y, width_pos, he
     for test_x, test_y in test_positions:
         overlap_score = 0
 
-        # Check distance to each position we want to avoid
-        for avoid_x, avoid_y in avoid_positions:
-            distance = ((test_x - avoid_x) ** 2 + (test_y - avoid_y) ** 2) ** 0.5
+        # Check if marker would overlap with any text region
+        marker_left = test_x - radius
+        marker_right = test_x + radius
+        marker_top = test_y - radius
+        marker_bottom = test_y + radius
 
-            # If too close (within the marker radius + buffer), add to overlap score
-            if distance < radius + 30:  # 30 pixel buffer
-                overlap_score += (radius + 30 - distance)
+        for region in avoid_regions:
+            # Check for overlap between marker and text region
+            if (marker_left < region['right'] and marker_right > region['left'] and
+                marker_top < region['bottom'] and marker_bottom > region['top']):
+                # Calculate overlap amount
+                overlap_x = min(marker_right, region['right']) - max(marker_left, region['left'])
+                overlap_y = min(marker_bottom, region['bottom']) - max(marker_top, region['top'])
+                overlap_score += overlap_x * overlap_y
 
         # Keep the position with minimum overlap
         if overlap_score < min_overlap_score:
@@ -131,12 +181,6 @@ def mark_intersections(image_path, measurement_data, pairing_data):
             print(f"  Height '{opening['height']}' position: ({height_pos[0]:.0f}, {height_pos[1]:.0f})")
             print(f"  → Intersection (Width X, Height Y): ({intersection_x}, {intersection_y})")
 
-            # Collect all measurement positions for this image
-            all_measurement_positions = []
-            for m in measurements:
-                if 'position' in m:
-                    all_measurement_positions.append(m['position'])
-
             intersection_points.append({
                 'opening': opening,
                 'intersection': (intersection_x, intersection_y),
@@ -145,10 +189,18 @@ def mark_intersections(image_path, measurement_data, pairing_data):
             })
 
             # Find a clear position for the opening number marker
+            # Pass the opening info along with all measurements
+            current_opening_info = {
+                'specification': opening['specification'],
+                'width': opening['width'],
+                'height': opening['height']
+            }
+            all_measurements_with_opening = measurements + [current_opening_info]
+
             marker_x, marker_y = find_clear_position_for_marker(
                 intersection_x, intersection_y,
                 width_pos, height_pos,
-                all_measurement_positions,
+                all_measurements_with_opening,
                 radius=45
             )
 
@@ -233,13 +285,24 @@ def mark_intersections(image_path, measurement_data, pairing_data):
                 overlay_info = meas['text']
                 break
 
+    # Parse overlay amount if found (e.g., "5/8 OL" -> 0.625)
+    overlay_amount = 0
+    if overlay_info:
+        import re
+        # Look for fraction pattern before OL
+        match = re.search(r'(\d+)/(\d+)\s+OL', overlay_info)
+        if match:
+            numerator = float(match.group(1))
+            denominator = float(match.group(2))
+            overlay_amount = numerator / denominator
+
     # Add legend with red indicators - LOWER LEFT with BIGGER TEXT
     image_height = annotated.shape[0]
     # Reduced height since overlay is now in title, not separate line
     legend_height = 50 + (len(openings) * 40)  # No extra space for overlay line
     # Leave about 1 inch (96 pixels) at the bottom of the page
     legend_y_start = image_height - legend_height - 100  # 100px from bottom for 1"+ margin
-    legend_width = 650  # Wider to fit room name and overlay text
+    legend_width = 750  # Wider to fit "Cabinet Finish Sizes" title
 
     # White background with black border
     legend_bottom = legend_y_start + legend_height
@@ -248,13 +311,66 @@ def mark_intersections(image_path, measurement_data, pairing_data):
 
     # Title with overlay info and room name - BIGGER TEXT
     title_y = legend_y_start + 35
-    title_text = "CABINET OPENINGS"
-    if room_name:
-        title_text = f"{room_name} - {title_text}"
     if overlay_info:
-        title_text = f"{title_text} {overlay_info}"
+        # When overlay is found, change title to "Cabinet Finish Sizes"
+        title_text = f"CABINET FINISH SIZES for {overlay_info}"
+        if room_name:
+            title_text = f"{room_name} - {title_text}"
+    else:
+        # No overlay, keep original title
+        title_text = "CABINET OPENINGS"
+        if room_name:
+            title_text = f"{room_name} - {title_text}"
     cv2.putText(annotated, title_text,
                (20, title_y), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 0), 2)
+
+    # Helper function to parse and add overlay to dimension
+    def add_overlay_to_dimension(dim_text, overlay_amt):
+        """Add overlay amount to a dimension like '33 3/8' """
+        if overlay_amt == 0:
+            return dim_text
+
+        # Parse the dimension
+        import re
+        match = re.match(r'(\d+)\s*(\d+/\d+)?', dim_text)
+        if match:
+            whole = int(match.group(1))
+            fraction = match.group(2)
+
+            # Convert to decimal
+            total = float(whole)
+            if fraction:
+                parts = fraction.split('/')
+                total += float(parts[0]) / float(parts[1])
+
+            # Add overlay
+            total += overlay_amt
+
+            # Convert back to fraction format
+            whole_part = int(total)
+            decimal_part = total - whole_part
+
+            # Find closest common fraction
+            if decimal_part < 0.0625:  # Less than 1/16
+                return str(whole_part)
+            elif decimal_part < 0.1875:  # 1/8
+                return f"{whole_part} 1/8"
+            elif decimal_part < 0.3125:  # 1/4
+                return f"{whole_part} 1/4"
+            elif decimal_part < 0.4375:  # 3/8
+                return f"{whole_part} 3/8"
+            elif decimal_part < 0.5625:  # 1/2
+                return f"{whole_part} 1/2"
+            elif decimal_part < 0.6875:  # 5/8
+                return f"{whole_part} 5/8"
+            elif decimal_part < 0.8125:  # 3/4
+                return f"{whole_part} 3/4"
+            elif decimal_part < 0.9375:  # 7/8
+                return f"{whole_part} 7/8"
+            else:
+                return str(whole_part + 1)
+
+        return dim_text
 
     # Opening specifications - BIGGER TEXT
     for i, opening in enumerate(openings):
@@ -264,8 +380,16 @@ def mark_intersections(image_path, measurement_data, pairing_data):
         cv2.circle(annotated, (35, y_pos - 8), 12, (255, 255, 255), -1)  # White fill
         cv2.circle(annotated, (35, y_pos - 8), 12, color, 3)  # Red outline
 
-        # Draw text (replace × with x to avoid encoding issues) - BIGGER
-        spec_text = opening['specification'].replace('×', 'x')
+        # Process specification - add overlay if found
+        if overlay_amount > 0:
+            # Add overlay to both width and height
+            width_with_overlay = add_overlay_to_dimension(opening['width'], overlay_amount)
+            height_with_overlay = add_overlay_to_dimension(opening['height'], overlay_amount)
+            spec_text = f"{width_with_overlay} W x {height_with_overlay} H"
+        else:
+            # No overlay, use original specification
+            spec_text = opening['specification'].replace('×', 'x')
+
         text = f"#{opening['number']}: {spec_text}"
         cv2.putText(annotated, text, (60, y_pos),
                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2)

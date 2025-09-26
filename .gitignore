@@ -22,4 +22,5 @@ temp_report.html
 # Sensitive
 github-token.txt
 token.txt
-credentials.json
+credentials.json.env
+*.env
