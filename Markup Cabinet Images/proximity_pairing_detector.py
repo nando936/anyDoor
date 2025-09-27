@@ -210,8 +210,12 @@ def pair_by_proximity(measurements):
             best_distance = float('inf')
 
             for height in heights:
-                # Skip if this height has already been paired
-                if id(height) in used_heights:
+                # DON'T skip used heights - they can be shared between widths
+                # if id(height) in used_heights:
+                #     continue
+
+                # ONLY consider heights ABOVE the width (smaller Y coordinate)
+                if height['y'] >= width['y']:
                     continue
 
                 # Calculate distance
@@ -241,6 +245,7 @@ def pair_by_proximity(measurements):
                     'height_pos': (best_height['x'], best_height['y']),
                     'distance': best_distance
                 })
+                # Track paired heights (but they can still be reused)
                 used_heights.add(id(best_height))
             else:
                 print(f"  → No height found above this width")
@@ -409,7 +414,9 @@ def main():
 
         # Include room name in filename if available
         if room_name:
-            output_filename = f"{base_name}_{room_name}_openings_{opening_range}_paired.png"
+            # Sanitize room name for filename (replace problematic characters)
+            filename_safe_room = room_name.replace('/', '-').replace('[', '(').replace(']', ')').replace(' ', '_')
+            output_filename = f"{base_name}_{filename_safe_room}_openings_{opening_range}_paired.png"
         else:
             output_filename = f"{base_name}_openings_{opening_range}_paired.png"
 

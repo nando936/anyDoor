@@ -64,10 +64,141 @@ def find_measurement_positions(measurements, text):
             return meas['position']
     return None
 
-def find_clear_position_for_marker(intersection_x, intersection_y, width_pos, height_pos, all_measurements, radius=45):
+def collect_occupied_regions(measurements, marker_positions):
+    """Collect all occupied regions from measurements and markers"""
+    occupied_regions = []
+
+    # From original measurement text
+    for meas in measurements:
+        if 'full_bounds' in meas and meas['full_bounds']:
+            occupied_regions.append({
+                'left': meas['full_bounds']['left'],
+                'right': meas['full_bounds']['right'],
+                'top': meas['full_bounds']['top'],
+                'bottom': meas['full_bounds']['bottom']
+            })
+        elif 'bounds' in meas and 'position' in meas:
+            # Fallback if full_bounds not available
+            left_bound, right_bound = meas['bounds']
+            pos = meas['position']
+            occupied_regions.append({
+                'left': left_bound,
+                'right': right_bound,
+                'top': pos[1] - 20,
+                'bottom': pos[1] + 20
+            })
+
+    # From marker positions (circles and labels)
+    for marker_data in marker_positions:
+        x = marker_data['x']
+        y = marker_data['y']
+        radius = marker_data.get('radius', 45)
+        label_bottom = marker_data.get('label_bottom', y + 150)
+        # Account for circle radius and text below
+        occupied_regions.append({
+            'left': x - radius - 10,
+            'right': x + radius + 10,
+            'top': y - radius,
+            'bottom': label_bottom
+        })
+
+    return occupied_regions
+
+def calculate_overlap(box1, box2):
+    """Calculate overlap area between two boxes"""
+    x_overlap = max(0, min(box1['right'], box2['right']) - max(box1['left'], box2['left']))
+    y_overlap = max(0, min(box1['bottom'], box2['bottom']) - max(box1['top'], box2['top']))
+    return x_overlap * y_overlap
+
+def find_best_legend_position(image_shape, legend_width, legend_height, occupied_regions):
+    """Find best position for legend that avoids existing content"""
+    image_height, image_width = image_shape[:2]
+    margin = 20  # Margin from image edges
+    bottom_margin = 72  # 3/4 inch margin from bottom (72 pixels at 96 DPI)
+
+    # Try multiple candidate positions
+    candidate_positions = [
+        # Bottom positions (preferred) - with 3/4" margin
+        (margin, image_height - legend_height - bottom_margin),  # Bottom left
+        (image_width - legend_width - margin, image_height - legend_height - bottom_margin),  # Bottom right
+        ((image_width - legend_width) // 2, image_height - legend_height - bottom_margin),  # Bottom center
+
+        # Top positions
+        (margin, margin),  # Top left
+        (image_width - legend_width - margin, margin),  # Top right
+        ((image_width - legend_width) // 2, margin),  # Top center
+
+        # Middle positions (last resort before resizing)
+        (margin, (image_height - legend_height) // 2),  # Middle left
+        (image_width - legend_width - margin, (image_height - legend_height) // 2),  # Middle right
+    ]
+
+    best_position = None
+    min_overlap = float('inf')
+
+    for x, y in candidate_positions:
+        # Check if position is within image bounds
+        if x < 0 or y < 0 or x + legend_width > image_width or y + legend_height > image_height:
+            continue
+
+        legend_box = {
+            'left': x,
+            'right': x + legend_width,
+            'top': y,
+            'bottom': y + legend_height
+        }
+
+        # Calculate total overlap with all occupied regions
+        total_overlap = 0
+        for region in occupied_regions:
+            overlap = calculate_overlap(legend_box, region)
+            total_overlap += overlap
+
+        if total_overlap < min_overlap:
+            min_overlap = total_overlap
+            best_position = (x, y)
+
+        # If we found a position with no overlap, use it immediately
+        if total_overlap == 0:
+            break
+
+    # Return position and whether it has conflicts
+    has_conflicts = min_overlap > 0
+    return best_position, has_conflicts
+
+def resize_image_for_legend(image, legend_width, legend_height, position='bottom'):
+    """Resize image to make room for legend - last resort only"""
+    height, width = image.shape[:2]
+
+    if position == 'bottom':
+        # Add space at bottom
+        new_height = height + legend_height + 40  # Extra margin
+        new_image = np.ones((new_height, width, 3), dtype=np.uint8) * 255  # White background
+        new_image[:height, :] = image  # Copy original image to top
+        legend_position = (20, height + 20)  # Position for legend
+
+    elif position == 'right':
+        # Add space on right
+        new_width = width + legend_width + 40
+        new_image = np.ones((height, new_width, 3), dtype=np.uint8) * 255
+        new_image[:, :width] = image
+        legend_position = (width + 20, height - legend_height - 20)
+
+    else:  # top
+        # Add space at top
+        new_height = height + legend_height + 40
+        new_image = np.ones((new_height, width, 3), dtype=np.uint8) * 255
+        new_image[legend_height + 40:, :] = image  # Shift original down
+        legend_position = (20, 20)
+
+    return new_image, legend_position
+
+def find_clear_position_for_marker(intersection_x, intersection_y, width_pos, height_pos, all_measurements, radius=45, opening=None):
     """
     Find a clear position for the opening number marker that doesn't overlap with text.
     Try different offsets: left, right, above-left, above-right, below-left, below-right
+
+    Now accounts for the marker's own dimension text that will be added below it.
     """
     # Collect all text boundaries to avoid
     avoid_regions = []
@@ -77,17 +208,33 @@ def find_clear_position_for_marker(intersection_x, intersection_y, width_pos, he
         if pos:
             # Find the measurement in all_measurements to get its bounds
             for m in all_measurements:
-                if m['text'] == meas_text and 'bounds' in m:
-                    left_bound, right_bound = m['bounds']
-                    # Create a region from left to right bound, with vertical padding
-                    avoid_regions.append({
-                        'left': left_bound,
-                        'right': right_bound,
-                        'top': pos[1] - 20,
-                        'bottom': pos[1] + 20,
-                        'center': pos
-                    })
-                    return
+                # Match both text AND position to handle duplicate measurements correctly
+                if (m['text'] == meas_text and
+                    'position' in m and
+                    abs(m['position'][0] - pos[0]) < 5 and
+                    abs(m['position'][1] - pos[1]) < 5):
+                    # Use full_bounds if available (complete bounding box from OCR)
+                    if 'full_bounds' in m and m['full_bounds']:
+                        avoid_regions.append({
+                            'left': m['full_bounds']['left'],
+                            'right': m['full_bounds']['right'],
+                            'top': m['full_bounds']['top'],
+                            'bottom': m['full_bounds']['bottom'],
+                            'center': pos
+                        })
+                        return
+                    # Fall back to horizontal bounds with estimated vertical padding
+                    elif 'bounds' in m:
+                        left_bound, right_bound = m['bounds']
+                        # Create a region from left to right bound, with vertical padding
+                        avoid_regions.append({
+                            'left': left_bound,
+                            'right': right_bound,
+                            'top': pos[1] - 20,
+                            'bottom': pos[1] + 20,
+                            'center': pos
+                        })
+                        return
             # Fallback if bounds not found
             avoid_regions.append({
                 'left': pos[0] - 70,
@@ -126,6 +273,33 @@ def find_clear_position_for_marker(intersection_x, intersection_y, width_pos, he
             if m['text'] != width_text and m['text'] != height_text:
                 add_measurement_bounds(m['text'], m['position'])
 
+    # Calculate the dimension text that will be displayed to get its width
+    # This is needed to properly avoid overlaps
+    import cv2
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 1.0  # Same scale used when drawing
+    thickness = 2
+
+    # Build the dimension text (same format as when drawing)
+    if opening:
+        width_str = opening.get('width', '')
+        height_str = opening.get('height', '')
+        if opening.get('width_finished', False):
+            width_str += "F"
+        if opening.get('height_finished', False):
+            height_str += "F"
+        dim_text = f"{width_str} x {height_str}"
+    else:
+        # Fallback if opening not provided
+        dim_text = f"{width_text or ''} x {height_text or ''}"
+
+    # Get the actual text dimensions
+    (text_width, text_height), _ = cv2.getTextSize(dim_text, font, font_scale, thickness)
+
+    # The marker+text box should be at least as wide as the text
+    # Add some padding (5 pixels each side like when drawing)
+    total_text_width = text_width + 10  # +5 padding on each side
+
     # Try different offset positions in order of preference
     offset_distance = 80  # Distance to offset the marker
     test_positions = [
@@ -147,10 +321,15 @@ def find_clear_position_for_marker(intersection_x, intersection_y, width_pos, he
         overlap_score = 0
 
         # Check if marker would overlap with any text region
-        marker_left = test_x - radius
-        marker_right = test_x + radius
+        # Account for the marker circle AND the dimension text below it
+        # Use the wider of the text width or circle diameter
+        half_width = max(total_text_width // 2, radius)
+        marker_left = test_x - half_width
+        marker_right = test_x + half_width
         marker_top = test_y - radius
-        marker_bottom = test_y + radius
+        # Extend bottom to account for dimension text below marker
+        # Text is placed at marker_y + 65, plus text height, plus some padding
+        marker_bottom = test_y + 65 + text_height + 10  # More accurate bottom calculation
 
         for region in avoid_regions:
             # Check for overlap between marker and text region
@@ -189,6 +368,9 @@ def mark_intersections(image_path, measurement_data, pairing_data):
     measurements = measurement_data['measurements']
     openings = pairing_data['openings']
 
+    # Track marker positions for collision detection with legend
+    marker_positions = []
+
     print("=" * 80)
     print("MARKING WIDTH-HEIGHT INTERSECTIONS")
     print("-" * 60)
@@ -199,6 +381,7 @@ def mark_intersections(image_path, measurement_data, pairing_data):
     color = (0, 0, 255)  # Red
 
     intersection_points = []
+    marker_positions = []  # Track marker positions for collision detection
 
     for i, opening in enumerate(openings):
 
@@ -242,7 +425,8 @@ def mark_intersections(image_path, measurement_data, pairing_data):
                 intersection_x, intersection_y,
                 width_pos, height_pos,
                 all_measurements_with_opening,
-                radius=45
+                radius=45,
+                opening=opening
             )
 
             # Draw small cross at the actual intersection point
@@ -255,6 +439,14 @@ def mark_intersections(image_path, measurement_data, pairing_data):
             # Draw white filled circle with red outline at the clear position
             cv2.circle(annotated, (marker_x, marker_y), 45, (255, 255, 255), -1)  # White fill
             cv2.circle(annotated, (marker_x, marker_y), 45, color, 3)  # Red outline
+
+            # Store marker position for collision detection
+            marker_positions.append({
+                'x': marker_x,
+                'y': marker_y,
+                'radius': 45,
+                'label_bottom': marker_y + 100  # Account for dimension and notation text below marker
+            })
 
             # Draw opening number at marker position (much bigger text with #)
             text = f"#{opening['number']}"
@@ -305,35 +497,35 @@ def mark_intersections(image_path, measurement_data, pairing_data):
                 expanded_notations = [expand_notation_abbreviation(n) for n in opening['notations']]
                 notation_text = ", ".join(expanded_notations)
 
-            label_y = marker_y + 55  # Below the marker circle
+            label_y = marker_y + 65  # Below the marker circle (adjusted for bigger text)
 
-            # Background for dimension text
-            (text_width, text_height), _ = cv2.getTextSize(dim_text, font, 0.5, 1)
+            # Background for dimension text (twice as big - font scale 1.0 instead of 0.5)
+            (text_width, text_height), _ = cv2.getTextSize(dim_text, font, 1.0, 2)
             cv2.rectangle(annotated,
-                         (marker_x - text_width//2 - 3, label_y - text_height - 3),
-                         (marker_x + text_width//2 + 3, label_y + 3),
+                         (marker_x - text_width//2 - 5, label_y - text_height - 5),
+                         (marker_x + text_width//2 + 5, label_y + 5),
                          (255, 255, 255), -1)
 
-            # Draw dimension text
+            # Draw dimension text (twice as big)
             cv2.putText(annotated, dim_text,
                        (marker_x - text_width//2, label_y),
-                       font, 0.5, color, 1)
+                       font, 1.0, color, 2)
 
             # Draw notation text below dimensions if present
             if notation_text:
-                notation_y = label_y + 20  # Below the dimensions
+                notation_y = label_y + 35  # Below the dimensions (adjusted for bigger text)
 
-                # Background for notation text
-                (notation_width, notation_height), _ = cv2.getTextSize(notation_text, font, 0.45, 1)
+                # Background for notation text (also make bigger - 0.9 scale)
+                (notation_width, notation_height), _ = cv2.getTextSize(notation_text, font, 0.9, 2)
                 cv2.rectangle(annotated,
-                             (marker_x - notation_width//2 - 3, notation_y - notation_height - 3),
-                             (marker_x + notation_width//2 + 3, notation_y + 3),
+                             (marker_x - notation_width//2 - 5, notation_y - notation_height - 5),
+                             (marker_x + notation_width//2 + 5, notation_y + 5),
                              (255, 255, 255), -1)
 
-                # Draw notation text in red
+                # Draw notation text in red (bigger)
                 cv2.putText(annotated, notation_text,
                            (marker_x - notation_width//2, notation_y),
-                           font, 0.45, color, 1)
+                           font, 0.9, color, 2)
 
             # Draw crosshair at intersection
             cross_size = 30
@@ -368,15 +560,29 @@ def mark_intersections(image_path, measurement_data, pairing_data):
             denominator = float(match.group(2))
             overlay_amount = numerator / denominator
 
-    # Add legend with red indicators - LOWER LEFT with BIGGER TEXT
-    image_height = annotated.shape[0]
+    # Add legend with red indicators - SMART PLACEMENT with collision detection
+    image_height, image_width = annotated.shape[:2]
     # Reduced height since overlay is now in title, not separate line
     legend_height = 50 + (len(openings) * 40)  # Base height
-    # Leave about 1 inch (96 pixels) at the bottom of the page
-    legend_y_start = image_height - legend_height - 100  # 100px from bottom for 1"+ margin
 
-    # Check if we need more width for notations and F note
-    max_text_width = 750
+    # Calculate the title text first to include it in width calculation
+    if overlay_info:
+        title_text = f"CABINET FINISH SIZES for {overlay_info}"
+        if room_name:
+            title_text = f"{room_name} - {title_text}"
+    else:
+        title_text = "CABINET OPENINGS"
+        if room_name:
+            title_text = f"{room_name} - {title_text}"
+
+    # Check if we need more width for title and opening text
+    # Use getTextSize for accurate measurement instead of estimation
+    font = cv2.FONT_HERSHEY_SIMPLEX
+
+    # Get actual title width
+    (title_width, title_height), _ = cv2.getTextSize(title_text, font, 0.9, 2)
+    max_text_width = title_width + 40  # Add margin
+
     for opening in openings:
         # Build the text as it will appear
         width_text = opening['width']
@@ -396,32 +602,50 @@ def mark_intersections(image_path, measurement_data, pairing_data):
             expanded_notations = [expand_notation_abbreviation(n) for n in opening['notations']]
             test_text += f" ({', '.join(expanded_notations)})"
 
-        # Estimate text width (approximately 12 pixels per character at scale 0.7)
-        text_width_estimate = len(test_text) * 12 + 100  # Add margin for circle
+        # Get actual text width
+        (text_width, text_height), _ = cv2.getTextSize(test_text, font, 0.7, 2)
+        text_width_estimate = text_width + 100  # Add margin for circle and padding
         if text_width_estimate > max_text_width:
             max_text_width = text_width_estimate
 
     legend_width = max_text_width  # Use calculated width
 
+    # Collect all occupied regions from measurements and markers
+    occupied_regions = collect_occupied_regions(measurements, marker_positions)
+
+    # Find best position for legend
+    position_result = find_best_legend_position(
+        (image_height, image_width),
+        legend_width,
+        legend_height,
+        occupied_regions
+    )
+
+    best_position, has_conflicts = position_result
+
+    # If position has conflicts, resize the image as last resort
+    if has_conflicts:
+        print(f"\n[WARNING] Legend would overlap with content at all positions, resizing image...")
+        annotated = resize_image_for_legend(annotated, legend_width, legend_height, position='bottom')
+        # Update image dimensions
+        image_height, image_width = annotated.shape[:2]
+        # Position legend at bottom after resize with 3/4" margin
+        legend_x = 10
+        legend_y_start = image_height - legend_height - 72  # 72px (3/4") from bottom
+    else:
+        legend_x, legend_y_start = best_position
+        print(f"\n[OK] Found clear position for legend at ({legend_x}, {legend_y_start})")
+
     # White background with black border
     legend_bottom = legend_y_start + legend_height
-    cv2.rectangle(annotated, (10, legend_y_start), (10 + legend_width, legend_bottom), (255, 255, 255), -1)
-    cv2.rectangle(annotated, (10, legend_y_start), (10 + legend_width, legend_bottom), (0, 0, 0), 3)
+    cv2.rectangle(annotated, (legend_x, legend_y_start), (legend_x + legend_width, legend_bottom), (255, 255, 255), -1)
+    cv2.rectangle(annotated, (legend_x, legend_y_start), (legend_x + legend_width, legend_bottom), (0, 0, 0), 3)
 
     # Title with overlay info and room name - BIGGER TEXT
+    # (title_text already calculated above for box sizing)
     title_y = legend_y_start + 35
-    if overlay_info:
-        # When overlay is found, change title to "Cabinet Finish Sizes"
-        title_text = f"CABINET FINISH SIZES for {overlay_info}"
-        if room_name:
-            title_text = f"{room_name} - {title_text}"
-    else:
-        # No overlay, keep original title
-        title_text = "CABINET OPENINGS"
-        if room_name:
-            title_text = f"{room_name} - {title_text}"
     cv2.putText(annotated, title_text,
-               (20, title_y), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 0), 2)
+               (legend_x + 10, title_y), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 0), 2)
 
     # Helper function to parse and add overlay to dimension
     def add_overlay_to_dimension(dim_text, overlay_amt):
@@ -475,9 +699,27 @@ def mark_intersections(image_path, measurement_data, pairing_data):
     for i, opening in enumerate(openings):
         y_pos = title_y + 40 + (i * 40)  # More spacing for bigger text
 
-        # Draw red circle indicator with white fill (printer friendly) - BIGGER
-        cv2.circle(annotated, (35, y_pos - 8), 12, (255, 255, 255), -1)  # White fill
-        cv2.circle(annotated, (35, y_pos - 8), 12, color, 3)  # Red outline
+        # Draw opening number with circle around it (like on the markers)
+        circle_x = legend_x + 35  # Position for the number circle
+        circle_radius = 20  # Smaller than marker but visible
+
+        # Draw white filled circle with red outline
+        cv2.circle(annotated, (circle_x, y_pos - 5), circle_radius, (255, 255, 255), -1)  # White fill
+        cv2.circle(annotated, (circle_x, y_pos - 5), circle_radius, color, 2)  # Red outline
+
+        # Draw opening number inside the circle
+        number_text = f"#{opening['number']}"
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        font_scale = 0.7
+        thickness = 2
+
+        # Get text size for centering
+        (text_width, text_height), _ = cv2.getTextSize(number_text, font, font_scale, thickness)
+
+        # Draw centered number in red
+        cv2.putText(annotated, number_text,
+                   (circle_x - text_width//2, y_pos - 5 + text_height//2),
+                   font, font_scale, color, thickness)
 
         # Process specification - add overlay if found and not a finished size
         if overlay_amount > 0 and not opening.get('finished_size', False):
@@ -496,7 +738,8 @@ def mark_intersections(image_path, measurement_data, pairing_data):
                 height_text += "F"  # No space before F
             spec_text = f"{width_text} W x {height_text} H"
 
-        text = f"#{opening['number']}: {spec_text}"
+        # Now just the specification text (no number since it's in the circle)
+        text = f": {spec_text}"
 
         # If this opening has F, add the note inline
         if opening.get('finished_size', False):
@@ -509,7 +752,8 @@ def mark_intersections(image_path, measurement_data, pairing_data):
             notations_text = ", ".join(expanded_notations)
             text += f" ({notations_text})"
 
-        cv2.putText(annotated, text, (60, y_pos),
+        # Draw specification text next to the circle (shifted right to account for circle)
+        cv2.putText(annotated, text, (circle_x + circle_radius + 10, y_pos),
                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2)
 
 
@@ -561,7 +805,9 @@ def mark_intersections(image_path, measurement_data, pairing_data):
 
     # Include room name in filename if available
     if room_name:
-        output_filename = f"{base_name}_{room_name}_openings_{opening_range}_marked.png"
+        # Sanitize room name for filename (replace problematic characters)
+        filename_safe_room = room_name.replace('/', '-').replace('[', '(').replace(']', ')').replace(' ', '_')
+        output_filename = f"{base_name}_{filename_safe_room}_openings_{opening_range}_marked.png"
     else:
         output_filename = f"{base_name}_openings_{opening_range}_marked.png"
 

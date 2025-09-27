@@ -17,6 +17,50 @@ import sys
 
 sys.stdout.reconfigure(encoding='utf-8')
 
+def extract_full_bounds(vertices):
+    """Extract full bounding box from vertices [left, right, top, bottom]"""
+    if not vertices or len(vertices) < 4:
+        return None
+
+    # Extract x and y coordinates from vertices
+    x_coords = [v.get('x', 0) for v in vertices]
+    y_coords = [v.get('y', 0) for v in vertices]
+
+    # Return bounding box as [left, right, top, bottom]
+    return {
+        'left': min(x_coords),
+        'right': max(x_coords),
+        'top': min(y_coords),
+        'bottom': max(y_coords)
+    }
+
+def merge_vertices_from_group(group):
+    """Merge vertices from all items in a group to get complete bounding box"""
+    if not group:
+        return None
+
+    all_vertices = []
+    for g in group:
+        if 'item' in g and g['item'].get('vertices'):
+            all_vertices.extend(g['item']['vertices'])
+
+    if not all_vertices:
+        return None
+
+    # Extract all x and y coordinates
+    x_coords = [v.get('x', 0) for v in all_vertices]
+    y_coords = [v.get('y', 0) for v in all_vertices]
+
+    # Create merged bounding box vertices
+    merged_vertices = [
+        {'x': min(x_coords), 'y': min(y_coords)},  # Top-left
+        {'x': max(x_coords), 'y': min(y_coords)},  # Top-right
+        {'x': max(x_coords), 'y': max(y_coords)},  # Bottom-right
+        {'x': min(x_coords), 'y': max(y_coords)}   # Bottom-left
+    ]
+
+    return merged_vertices
+
 def fix_ocr_errors(text, is_full_text=False):
     """Apply generic OCR error fixes to any text
 
@@ -45,9 +89,191 @@ def fix_ocr_errors(text, is_full_text=False):
 
     return text
 
-def verify_measurement_with_zoom(image_path, x, y, text, api_key):
-    """Verify a measurement by zooming in on its location"""
+def apply_hsv_preprocessing(image):
+    """Apply HSV preprocessing to extract green text
+
+    Args:
+        image: BGR image from OpenCV
+
+    Returns:
+        Preprocessed image with black text on white background
+    """
     import cv2
+    import numpy as np
+
+    # Convert to HSV
+    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+
+    # Green color range in HSV (for green measurement text)
+    lower_green = np.array([40, 40, 40])
+    upper_green = np.array([80, 255, 255])
+
+    # Create mask for green
+    mask = cv2.inRange(hsv, lower_green, upper_green)
+
+    # Invert so text is black on white background
+    mask_inv = cv2.bitwise_not(mask)
+
+    return mask_inv
+
+def verify_measurement_with_zoom(image_path, x, y, text, api_key, group_bounds=None):
+    """Verify a measurement by zooming in on its location
+    Now with automatic HSV retry for any unrealistic measurements
+
+    Args:
+        image_path: Path to the image
+        x, y: Center coordinates of the measurement/group
+        text: Original text to verify
+        api_key: Google Vision API key
+        group_bounds: Optional dict with 'left', 'right', 'top', 'bottom' of the group
+    """
+    import cv2
+    import re
+
+    # Load the image
+    image = cv2.imread(image_path)
+    if image is None:
+        return text
+
+    h, w = image.shape[:2]
+
+    # Determine crop area
+    if group_bounds:
+        padding = 30
+        x1 = max(0, int(group_bounds['left'] - padding))
+        y1 = max(0, int(group_bounds['top'] - padding))
+        x2 = min(w, int(group_bounds['right'] + padding))
+        y2 = min(h, int(group_bounds['bottom'] + padding))
+    else:
+        padding_x = 200
+        padding_y = 50
+        x1 = max(0, int(x - padding_x))
+        y1 = max(0, int(y - padding_y))
+        x2 = min(w, int(x + padding_x))
+        y2 = min(h, int(y + padding_y))
+
+    # Crop and zoom
+    cropped = image[y1:y2, x1:x2]
+    zoom_factor = 3
+    zoomed = cv2.resize(cropped, None, fx=zoom_factor, fy=zoom_factor, interpolation=cv2.INTER_CUBIC)
+
+    # Helper function to run OCR
+    def run_ocr_and_extract(img, label=""):
+        _, buffer = cv2.imencode('.png', img)
+        content = base64.b64encode(buffer).decode('utf-8')
+
+        url = f"https://vision.googleapis.com/v1/images:annotate?key={api_key}"
+        request = {
+            "requests": [{
+                "image": {"content": content},
+                "features": [{"type": "TEXT_DETECTION"}]
+            }]
+        }
+
+        response = requests.post(url, json=request)
+
+        if response.status_code == 200:
+            result = response.json()
+            if 'responses' in result and result['responses']:
+                annotations = result['responses'][0].get('textAnnotations', [])
+                if annotations:
+                    full_text = annotations[0]['description']
+
+                    if label:
+                        print(f"    {label}: '{full_text.replace(chr(10), ' ')}'")
+
+                    # Look for measurement patterns
+                    patterns = [
+                        r'\b(\d+\s+\d+/\d+)\b',      # "5 1/2" or "9 1/4"
+                        r'\b(\d+)\s+(\d+/\d+)\b',    # "5" "1/2" on different lines
+                    ]
+
+                    for pattern in patterns:
+                        match = re.search(pattern, full_text)
+                        if match:
+                            if match.lastindex == 2:
+                                measurement = f"{match.group(1)} {match.group(2)}"
+                            else:
+                                measurement = match.group(1)
+
+                            first_num = int(re.match(r'^(\d+)', measurement).group(1))
+                            if 2 <= first_num <= 100:
+                                return measurement
+
+                    # Check center text
+                    zoomed_height, zoomed_width = img.shape[:2]
+                    center_x = zoomed_width / 2
+                    center_y = zoomed_height / 2
+
+                    for ann in annotations[1:]:
+                        vertices = ann.get('boundingPoly', {}).get('vertices', [])
+                        if len(vertices) >= 4:
+                            x_coords = [v.get('x', 0) for v in vertices]
+                            y_coords = [v.get('y', 0) for v in vertices]
+                            min_x, max_x = min(x_coords), max(x_coords)
+                            min_y, max_y = min(y_coords), max(y_coords)
+
+                            margin = 10
+                            if (min_x - margin <= center_x <= max_x + margin and
+                                min_y - margin <= center_y <= max_y + margin):
+                                text_item = ann['description'].strip()
+
+                                # Return the centered text
+                                if re.match(r'^\d+$', text_item) or \
+                                   re.match(r'^\d+\s+\d+/\d+$', text_item):
+                                    return text_item
+
+        return None
+
+    # First attempt with normal OCR
+    result = run_ocr_and_extract(zoomed, "Normal OCR")
+
+    # Check if result is unrealistic (e.g., "512" instead of "5 1/2")
+    if result and re.match(r'^\d+$', result):
+        num = int(result)
+        if num > 100:
+            print(f"    Result '{result}' is unrealistic (>100), trying HSV preprocessing...")
+
+            # Apply HSV preprocessing and retry
+            zoomed_hsv = apply_hsv_preprocessing(zoomed)
+            hsv_result = run_ocr_and_extract(zoomed_hsv, "HSV preprocessed OCR")
+
+            if hsv_result:
+                print(f"    Verification: HSV found '{hsv_result}'")
+                return hsv_result
+            # Fall through if HSV didn't help
+
+    # Also check if original text looks unrealistic and we should try HSV
+    if re.match(r'^\d{3,}$', text) and int(text) > 100:
+        print(f"    Original text '{text}' is unrealistic, trying HSV preprocessing...")
+        zoomed_hsv = apply_hsv_preprocessing(zoomed)
+        hsv_result = run_ocr_and_extract(zoomed_hsv, "HSV preprocessed OCR")
+
+        if hsv_result:
+            print(f"    Verification: HSV found '{hsv_result}'")
+            return hsv_result
+
+    # Return the best result we have
+    if result:
+        if result != text:
+            print(f"    Verification: '{text}' -> '{result}'")
+        return result
+
+    print(f"    Verification: No clear measurement found, keeping original '{text}'")
+    return text
+
+def verify_measurement_with_zoom_OLD(image_path, x, y, text, api_key, group_bounds=None):
+    """Verify a measurement by zooming in on its location
+
+    Args:
+        image_path: Path to the image
+        x, y: Center coordinates of the measurement/group
+        text: Original text to verify
+        api_key: Google Vision API key
+        group_bounds: Optional dict with 'left', 'right', 'top', 'bottom' of the group
+    """
+    import cv2
+    import re
 
     # Load the image
     image = cv2.imread(image_path)
@@ -56,14 +282,22 @@ def verify_measurement_with_zoom(image_path, x, y, text, api_key):
 
     h, w = image.shape[:2]
 
-    # Create a padded crop area - wider to ensure complete text capture
-    # Increased from 100 to 200 to avoid cutting off measurements
-    padding_x = 200  # Wider horizontal padding to capture complete measurements
-    padding_y = 50   # Vertical padding
-    x1 = max(0, int(x - padding_x))
-    y1 = max(0, int(y - padding_y))
-    x2 = min(w, int(x + padding_x))
-    y2 = min(h, int(y + padding_y))
+    # Determine crop area based on whether we have group bounds
+    if group_bounds:
+        # Use the exact group bounds with some padding
+        padding = 30  # Small padding around group
+        x1 = max(0, int(group_bounds['left'] - padding))
+        y1 = max(0, int(group_bounds['top'] - padding))
+        x2 = min(w, int(group_bounds['right'] + padding))
+        y2 = min(h, int(group_bounds['bottom'] + padding))
+    else:
+        # Fallback to center-based crop (original behavior)
+        padding_x = 200  # Wider horizontal padding to capture complete measurements
+        padding_y = 50   # Vertical padding
+        x1 = max(0, int(x - padding_x))
+        y1 = max(0, int(y - padding_y))
+        x2 = min(w, int(x + padding_x))
+        y2 = min(h, int(y + padding_y))
 
     # Crop the region
     cropped = image[y1:y2, x1:x2]
@@ -72,7 +306,7 @@ def verify_measurement_with_zoom(image_path, x, y, text, api_key):
     zoom_factor = 3
     zoomed = cv2.resize(cropped, None, fx=zoom_factor, fy=zoom_factor, interpolation=cv2.INTER_CUBIC)
 
-    # Encode the zoomed image for Vision API
+    # First try with normal OCR
     _, buffer = cv2.imencode('.png', zoomed)
     zoomed_content = base64.b64encode(buffer).decode('utf-8')
 
@@ -87,35 +321,95 @@ def verify_measurement_with_zoom(image_path, x, y, text, api_key):
 
     response = requests.post(url, json=request)
 
+    # Variable to track if we should retry with HSV
+    should_retry_with_hsv = False
+    first_attempt_result = text  # Default to original
+
     if response.status_code == 200:
         result = response.json()
         if 'responses' in result and result['responses']:
             annotations = result['responses'][0].get('textAnnotations', [])
             if annotations:
-                # Get the full text from the zoomed region
-                verified_text = annotations[0]['description'].strip()
-
-                # Look for measurement patterns in the verified text
                 import re
-                # Check for measurements in the verified text
-                lines = verified_text.split('\n')
-                for line in lines:
-                    line = line.strip()
-                    # First check if line exactly matches measurement patterns
-                    if re.match(r'^\d+$', line) or \
-                       re.match(r'^\d+\s+\d+/\d+$', line) or \
-                       re.match(r'^\d+-\d+/\d+$', line) or \
-                       re.match(r'^\d+/\d+/\d+$', line):
-                        print(f"    Verification: '{text}' -> '{line}'")
-                        return line
 
-                    # If line contains extra text, try to extract the measurement
-                    # This handles cases like "20.34 20 3/16" where we want "20 3/16"
-                    measurement_match = re.search(r'\b(\d+\s+\d+/\d+)\b', line)
-                    if measurement_match:
-                        extracted = measurement_match.group(1)
-                        print(f"    Verification: '{text}' -> '{extracted}' (extracted from '{line}')")
-                        return extracted
+                # Get the full text from the zoomed region
+                full_text = annotations[0]['description']
+
+                # First, process the normal OCR result
+                # Check if we're using group bounds
+                if group_bounds:
+                    print(f"    Zoomed group text: '{full_text.replace(chr(10), ' ')}'")
+
+                    # Look for complete measurement patterns in the group text
+                    patterns = [
+                        r'\b(\d+\s+\d+/\d+)\b',      # "20 1/16"
+                        r'\b(\d+-\d+/\d+)\b',         # "20-1/16"
+                    ]
+
+                    for pattern in patterns:
+                        match = re.search(pattern, full_text)
+                        if match:
+                            measurement = match.group(1).replace('-', ' ')
+                            # Sanity check
+                            first_num = int(re.match(r'^(\d+)', measurement).group(1))
+                            if 2 <= first_num <= 100:
+                                print(f"    Verification: Group contains measurement '{measurement}'")
+                                return measurement
+
+                    # If no complete measurement but we see numbers, try to extract them
+                    # This handles cases where OCR might split things up
+                    numbers = re.findall(r'\d+', full_text)
+                    fractions = re.findall(r'\d+/\d+', full_text)
+
+                    if numbers and fractions:
+                        # Try to combine the first whole number with first fraction
+                        potential = f"{numbers[0]} {fractions[0]}"
+                        first_num = int(numbers[0])
+                        if 2 <= first_num <= 100:
+                            print(f"    Verification: Reconstructed from group: '{potential}'")
+                            return potential
+
+                # Fall back to center-point checking (original logic)
+                zoomed_height, zoomed_width = zoomed.shape[:2]
+                center_x = zoomed_width / 2
+                center_y = zoomed_height / 2
+
+                # Filter annotations to only those whose bounding box contains the center
+                valid_texts = []
+                for ann in annotations[1:]:  # Skip first which is full text
+                    vertices = ann.get('boundingPoly', {}).get('vertices', [])
+                    if len(vertices) >= 4:
+                        # Get bounding box
+                        x_coords = [v.get('x', 0) for v in vertices]
+                        y_coords = [v.get('y', 0) for v in vertices]
+                        min_x, max_x = min(x_coords), max(x_coords)
+                        min_y, max_y = min(y_coords), max(y_coords)
+
+                        # Check if center point is within this text's bounding box
+                        margin = 10
+                        if (min_x - margin <= center_x <= max_x + margin and
+                            min_y - margin <= center_y <= max_y + margin):
+                            text_item = ann['description'].strip()
+                            valid_texts.append(text_item)
+                            print(f"    Text near center: '{text_item}' at bounds ({min_x},{min_y})-({max_x},{max_y})")
+
+                # First, check if the original text appears in valid texts
+                if text in valid_texts:
+                    print(f"    Verification: Original '{text}' found at center - keeping it")
+                    return text
+
+                # Check valid texts for measurement patterns
+                for text_item in valid_texts:
+                    # Check if it matches measurement patterns
+                    if re.match(r'^\d+$', text_item) or \
+                       re.match(r'^\d+\s+\d+/\d+$', text_item) or \
+                       re.match(r'^\d+-\d+/\d+$', text_item) or \
+                       re.match(r'^\d+/\d+/\d+$', text_item):
+                        print(f"    Verification: '{text}' -> '{text_item}' (text at center)")
+                        return text_item
+
+                # If no valid text at center, return original
+                print(f"    Verification: No valid text at center, keeping original '{text}'")
 
     return text  # Return original if verification doesn't find anything clear
 
@@ -225,9 +519,22 @@ def get_measurements_from_vision_api(image_path, api_key, debug_text=None):
     corrected_path = image_path  # Use original image directly
 
     # PASS 1: Initial OCR to get all text positions
-    print("\n  PASS 1: Initial OCR scan...")
-    with open(corrected_path, 'rb') as f:
-        content = base64.b64encode(f.read()).decode('utf-8')
+    print("\n  PASS 1: Initial OCR scan with HSV preprocessing...")
+
+    # Apply HSV preprocessing to better detect green text
+    image = cv2.imread(corrected_path)
+    hsv_image = apply_hsv_preprocessing(image)
+
+    # Encode the HSV-preprocessed image
+    success, buffer = cv2.imencode('.png', hsv_image)
+    if not success:
+        print("  [WARNING] HSV preprocessing failed, using original image")
+        # Fall back to original image
+        with open(corrected_path, 'rb') as f:
+            content = base64.b64encode(f.read()).decode('utf-8')
+    else:
+        print("  [OK] Using HSV-preprocessed image for better green text detection")
+        content = base64.b64encode(buffer).decode('utf-8')
 
     url = f"https://vision.googleapis.com/v1/images:annotate?key={api_key}"
     request = {
@@ -392,13 +699,45 @@ def get_measurements_from_vision_api(image_path, api_key, debug_text=None):
                                 print(f"      [CONFIRMED] '{item['text']}'")
                                 item['zoom_corrected'] = False
                     else:
-                        # Multiple items - zoom the center of the group
+                        # Multiple items - zoom the actual bounding box center of all text
                         group_text = ' '.join([g['text'] for g in group])
-                        avg_x = sum(g['x'] for g in group) / len(group)
-                        avg_y = sum(g['y'] for g in group) / len(group)
 
-                        print(f"    Zoom verifying group: '{group_text}' at ({avg_x:.0f}, {avg_y:.0f})...")
-                        verified_text = verify_measurement_with_zoom(image_path, avg_x, avg_y, group_text, api_key)
+                        # Get the actual bounds from vertices (not just center points)
+                        all_x_coords = []
+                        all_y_coords = []
+
+                        for g in group:
+                            if 'vertices' in g and g['vertices']:
+                                # Extract all x and y coordinates from vertices
+                                for vertex in g['vertices']:
+                                    all_x_coords.append(vertex.get('x', 0))
+                                    all_y_coords.append(vertex.get('y', 0))
+                            else:
+                                # Fallback to center point if no vertices
+                                all_x_coords.append(g['x'])
+                                all_y_coords.append(g['y'])
+
+                        # Calculate true bounding box from all vertices
+                        min_x = min(all_x_coords)
+                        max_x = max(all_x_coords)
+                        min_y = min(all_y_coords)
+                        max_y = max(all_y_coords)
+
+                        # Use center of the actual text bounds
+                        center_x = (min_x + max_x) / 2
+                        center_y = (min_y + max_y) / 2
+
+                        print(f"    Zoom verifying group: '{group_text}' at bbox center ({center_x:.0f}, {center_y:.0f})...")
+                        print(f"      Group spans: x=[{min_x:.0f} to {max_x:.0f}], y=[{min_y:.0f} to {max_y:.0f}]")
+
+                        # Pass the group bounds so verification extracts text from the complete group area
+                        group_bounds = {
+                            'left': min_x,
+                            'right': max_x,
+                            'top': min_y,
+                            'bottom': max_y
+                        }
+                        verified_text = verify_measurement_with_zoom(image_path, center_x, center_y, group_text, api_key, group_bounds)
 
                         # Sanity check - cabinet dimensions shouldn't be > 100 inches
                         if verified_text:
@@ -415,9 +754,25 @@ def get_measurements_from_vision_api(image_path, api_key, debug_text=None):
                             print(f"      [GROUP CORRECTED] '{group_text}' -> '{verified_text}'")
                             # Keep the verified text in the first item of the group
                             group[0]['text'] = verified_text
-                            group[0]['x'] = avg_x
-                            group[0]['y'] = avg_y
+                            group[0]['x'] = center_x
+                            group[0]['y'] = center_y
                             group[0]['zoom_corrected'] = True
+
+                            # Merge vertices from all items in the group
+                            all_vertices = []
+                            for g in group:
+                                if 'vertices' in g:
+                                    all_vertices.extend(g['vertices'])
+                            if all_vertices:
+                                # Create merged bounding box
+                                x_coords = [v.get('x', 0) for v in all_vertices]
+                                y_coords = [v.get('y', 0) for v in all_vertices]
+                                group[0]['vertices'] = [
+                                    {'x': min(x_coords), 'y': min(y_coords)},
+                                    {'x': max(x_coords), 'y': min(y_coords)},
+                                    {'x': max(x_coords), 'y': max(y_coords)},
+                                    {'x': min(x_coords), 'y': max(y_coords)}
+                                ]
 
                             # Mark other items as merged (will be skipped later)
                             for g in group[1:]:
@@ -427,8 +782,23 @@ def get_measurements_from_vision_api(image_path, api_key, debug_text=None):
                             # Even if not corrected, we need to update the first item with the grouped text
                             if len(group) > 1:
                                 group[0]['text'] = group_text
-                                group[0]['x'] = avg_x
-                                group[0]['y'] = avg_y
+                                group[0]['x'] = center_x
+                                group[0]['y'] = center_y
+                                # Merge vertices from all items in the group
+                                all_vertices = []
+                                for g in group:
+                                    if 'vertices' in g:
+                                        all_vertices.extend(g['vertices'])
+                                if all_vertices:
+                                    # Create merged bounding box
+                                    x_coords = [v.get('x', 0) for v in all_vertices]
+                                    y_coords = [v.get('y', 0) for v in all_vertices]
+                                    group[0]['vertices'] = [
+                                        {'x': min(x_coords), 'y': min(y_coords)},
+                                        {'x': max(x_coords), 'y': min(y_coords)},
+                                        {'x': max(x_coords), 'y': max(y_coords)},
+                                        {'x': min(x_coords), 'y': max(y_coords)}
+                                    ]
                                 # Mark other items as merged
                                 for g in group[1:]:
                                     g['merged'] = True
@@ -548,6 +918,7 @@ def get_measurements_from_vision_api(image_path, api_key, debug_text=None):
                             'width': len(converted_text) * 15,  # Estimate
                             'left_bound': item['x'] - len(converted_text) * 7,
                             'right_bound': item['x'] + len(converted_text) * 7,
+                            'vertices': item.get('vertices'),  # Store full bounding polygon
                             'finished_size': is_finished  # Track if this is a finished size
                         })
                         if is_finished:
@@ -584,15 +955,28 @@ def get_measurements_from_vision_api(image_path, api_key, debug_text=None):
                         # Check various formats
                         if combined_text == measurement:
                             # Direct match
-                            avg_x = sum(g['item']['x'] for g in group) / len(group)
-                            avg_y = sum(g['item']['y'] for g in group) / len(group)
+                            # Get merged vertices for complete bounding box
+                            merged_vertices = merge_vertices_from_group(group)
+
+                            # Calculate center from merged vertices if available
+                            if merged_vertices and len(merged_vertices) >= 4:
+                                x_coords = [v.get('x', 0) for v in merged_vertices]
+                                y_coords = [v.get('y', 0) for v in merged_vertices]
+                                avg_x = (min(x_coords) + max(x_coords)) / 2
+                                avg_y = (min(y_coords) + max(y_coords)) / 2
+                            else:
+                                # Fallback to original calculation
+                                avg_x = sum(g['item']['x'] for g in group) / len(group)
+                                avg_y = sum(g['item']['y'] for g in group) / len(group)
+
                             measurements.append({
                                 'text': measurement,
                                 'x': avg_x,
                                 'y': avg_y,
                                 'width': max(g['item']['x'] for g in group) - min(g['item']['x'] for g in group) + 40,
                                 'left_bound': min(g['item']['x'] for g in group) - 20,
-                                'right_bound': max(g['item']['x'] for g in group) + 40
+                                'right_bound': max(g['item']['x'] for g in group) + 40,
+                                'vertices': merged_vertices  # Store merged vertices
                             })
                             print(f"  Matched '{measurement}' at ({avg_x:.0f}, {avg_y:.0f})")
                             for g in group:
@@ -615,15 +999,28 @@ def get_measurements_from_vision_api(image_path, api_key, debug_text=None):
                                 reconstructed = text1 + ' ' + text2 + text3 if text2.startswith('/') or text3.startswith('/') else text1 + text2 + text3
 
                             if reconstructed and reconstructed == measurement:
-                                avg_x = sum(g['item']['x'] for g in group) / len(group)
-                                avg_y = sum(g['item']['y'] for g in group) / len(group)
+                                # Get merged vertices for complete bounding box
+                                merged_vertices = merge_vertices_from_group(group)
+
+                                # Calculate center from merged vertices if available
+                                if merged_vertices and len(merged_vertices) >= 4:
+                                    x_coords = [v.get('x', 0) for v in merged_vertices]
+                                    y_coords = [v.get('y', 0) for v in merged_vertices]
+                                    avg_x = (min(x_coords) + max(x_coords)) / 2
+                                    avg_y = (min(y_coords) + max(y_coords)) / 2
+                                else:
+                                    # Fallback to original calculation
+                                    avg_x = sum(g['item']['x'] for g in group) / len(group)
+                                    avg_y = sum(g['item']['y'] for g in group) / len(group)
+
                                 measurements.append({
                                     'text': measurement,
                                     'x': avg_x,
                                     'y': avg_y,
                                     'width': max(g['item']['x'] for g in group) - min(g['item']['x'] for g in group) + 40,
                                     'left_bound': min(g['item']['x'] for g in group) - 20,
-                                    'right_bound': max(g['item']['x'] for g in group) + 40
+                                    'right_bound': max(g['item']['x'] for g in group) + 40,
+                                    'vertices': merged_vertices  # Store merged vertices
                                 })
                                 print(f"  Reconstructed '{measurement}' from '{text1}' + '{text2}' + '{text3}'")
                                 for g in group:
@@ -651,15 +1048,28 @@ def get_measurements_from_vision_api(image_path, api_key, debug_text=None):
                                 reconstructed = text1 + ' ' + text2
 
                             if reconstructed and reconstructed == measurement:
-                                avg_x = (group[0]['item']['x'] + group[1]['item']['x']) / 2
-                                avg_y = (group[0]['item']['y'] + group[1]['item']['y']) / 2
+                                # Get merged vertices for complete bounding box
+                                merged_vertices = merge_vertices_from_group(group)
+
+                                # Calculate center from merged vertices if available
+                                if merged_vertices and len(merged_vertices) >= 4:
+                                    x_coords = [v.get('x', 0) for v in merged_vertices]
+                                    y_coords = [v.get('y', 0) for v in merged_vertices]
+                                    avg_x = (min(x_coords) + max(x_coords)) / 2
+                                    avg_y = (min(y_coords) + max(y_coords)) / 2
+                                else:
+                                    # Fallback to original calculation
+                                    avg_x = (group[0]['item']['x'] + group[1]['item']['x']) / 2
+                                    avg_y = (group[0]['item']['y'] + group[1]['item']['y']) / 2
+
                                 measurements.append({
                                     'text': measurement,
                                     'x': avg_x,
                                     'y': avg_y,
                                     'width': abs(group[1]['item']['x'] - group[0]['item']['x']) + 40,
                                     'left_bound': min(group[0]['item']['x'], group[1]['item']['x']) - 20,
-                                    'right_bound': max(group[0]['item']['x'], group[1]['item']['x']) + 40
+                                    'right_bound': max(group[0]['item']['x'], group[1]['item']['x']) + 40,
+                                    'vertices': merged_vertices  # Store merged vertices
                                 })
                                 print(f"  Reconstructed '{measurement}' from '{text1}' + '{text2}'")
                                 used_indices.add(group[0]['idx'])
@@ -911,18 +1321,40 @@ def check_for_arrow_at_endpoint(edges, x, y, radius=20):
         return True
     return False
 
-def find_lines_near_measurement(image, measurement, image_path=""):
+def find_lines_near_measurement(image, measurement, image_path="", save_roi_debug=False):
     """Find lines near a specific measurement position that match the text color"""
     x, y = int(measurement['x']), int(measurement['y'])
 
-    # Use actual text width from Vision API if available, otherwise estimate
-    text_height = 30  # Approximate height of text in pixels
-    if 'width' in measurement and measurement['width']:
-        text_width = int(measurement['width'])
-        print(f"    Using actual text width: {text_width}px")
+    # Use actual text bounds from vertices if available
+    if 'vertices' in measurement and measurement['vertices']:
+        # Extract actual bounds from vertices
+        vertices = measurement['vertices']
+        x_coords = [v.get('x', 0) for v in vertices]
+        y_coords = [v.get('y', 0) for v in vertices]
+
+        text_left = min(x_coords)
+        text_right = max(x_coords)
+        text_top = min(y_coords)
+        text_bottom = max(y_coords)
+
+        text_width = text_right - text_left
+        text_height = text_bottom - text_top
+
+        # Update x,y to be the actual center of the text bounds
+        x = int((text_left + text_right) / 2)
+        y = int((text_top + text_bottom) / 2)
+
+        print(f"    Using actual text bounds from vertices: width={text_width}px, height={text_height}px")
+        print(f"    Text bounds: left={text_left}, right={text_right}, top={text_top}, bottom={text_bottom}")
     else:
-        text_width = len(measurement.get('text', '')) * 15  # Approximate width based on character count
-        print(f"    Using estimated text width: {text_width}px")
+        # Fallback to estimates if no vertices available
+        text_height = 30  # Approximate height of text in pixels
+        if 'width' in measurement and measurement['width']:
+            text_width = int(measurement['width'])
+            print(f"    Using width field: {text_width}px")
+        else:
+            text_width = len(measurement.get('text', '')) * 15  # Approximate width based on character count
+            print(f"    Using estimated text width: {text_width}px")
 
     # Add padding for image skew or misalignment
     padding = 10  # pixels of padding to allow for skew
@@ -943,42 +1375,45 @@ def find_lines_near_measurement(image, measurement, image_path=""):
     # Create TWO different ROIs - one for horizontal lines, one for vertical lines
     # These ROIs AVOID the text area to find dimension lines
 
-    # For horizontal lines: Create TWO strips - one LEFT of text, one RIGHT of text
-    # (WIDTH text sits ON the horizontal line, so we look to the sides)
-    h_strip_width = text_width * 2  # Look 2x text width to each side
-    h_strip_height = text_height + 10  # Height centered on text Y
+    # For horizontal lines: Look LEFT and RIGHT of the text
+    # Horizontal ROI has same HEIGHT as text, extends LEFT/RIGHT to capture horizontal lines
+    h_strip_extension = text_width * 1  # Reduced by half - was text_width * 2
 
-    # Left horizontal ROI
-    h_left_x1 = max(0, x - text_width//2 - h_strip_width)
-    h_left_x2 = x - text_width//2
-    h_left_y1 = max(0, y - h_strip_height//2)
-    h_left_y2 = min(image.shape[0], y + h_strip_height//2)
+    # Left horizontal ROI - same height as text, extends left
+    h_left_x1 = max(0, x - text_width//2 - h_strip_extension)
+    h_left_x2 = x - text_width//2 - 5  # Stop just before text
+    h_left_y1 = y - text_height//2  # Aligned with text top
+    h_left_y2 = y + text_height//2  # Aligned with text bottom
 
-    # Right horizontal ROI
-    h_right_x1 = x + text_width//2
-    h_right_x2 = min(image.shape[1], x + text_width//2 + h_strip_width)
-    h_right_y1 = h_left_y1
+    # Right horizontal ROI - same height as text, extends right
+    h_right_x1 = x + text_width//2 + 5  # Start just after text
+    h_right_x2 = min(image.shape[1], x + text_width//2 + h_strip_extension)
+    h_right_y1 = h_left_y1  # Same vertical position as left ROI
     h_right_y2 = h_left_y2
 
-    # For vertical lines: Create TWO strips - one ABOVE text, one BELOW text
-    # (HEIGHT text sits ON the vertical line, so we look above/below)
-    v_strip_height = text_height * 4  # Look 4x text height above/below to capture full lines
-    v_strip_width = text_width + 20  # Width centered on text X with some padding
+    # For vertical lines: Look ABOVE and BELOW the text
+    # Vertical ROI has same WIDTH as text, extends ABOVE/BELOW to capture vertical lines
+    v_strip_extension = int(text_height * 1.5)  # Reduced by half - was text_height * 3
 
-    # Top vertical ROI
-    v_top_x1 = max(0, x - v_strip_width//2)
-    v_top_x2 = min(image.shape[1], x + v_strip_width//2)
-    v_top_y1 = max(0, y - text_height//2 - v_strip_height)
-    v_top_y2 = y - text_height//2
+    # Top vertical ROI - same width as text, extends above
+    v_top_x1 = x - text_width//2  # Aligned with text left
+    v_top_x2 = x + text_width//2  # Aligned with text right
+    v_top_y1 = max(0, y - text_height//2 - v_strip_extension)
+    v_top_y2 = y - text_height//2 - 5  # Stop just before text
 
-    # Bottom vertical ROI
-    v_bottom_x1 = v_top_x1
+    # Bottom vertical ROI - same width as text, extends below
+    v_bottom_x1 = v_top_x1  # Same horizontal position as top ROI
     v_bottom_x2 = v_top_x2
-    v_bottom_y1 = y + text_height//2
-    v_bottom_y2 = min(image.shape[0], y + text_height//2 + v_strip_height)
+    v_bottom_y1 = y + text_height//2 + 5  # Start just after text
+    v_bottom_y2 = min(image.shape[0], y + text_height//2 + v_strip_extension)
 
-    # Debug: Save ROIs for "45 1/4"
-    if "45" in str(measurement.get('text', '')):
+    # Debug: Save ROIs for ALL measurements (enable debug mode)
+    DEBUG_ROIS = save_roi_debug  # Enable debug based on parameter
+
+    # Store debug image for later (after classification is determined)
+    debug_img = None
+    if DEBUG_ROIS:
+        import os
         # Draw debug image showing ROIs
         debug_img = image.copy()
 
@@ -998,15 +1433,8 @@ def find_lines_near_measurement(image, measurement, image_path=""):
         cv2.circle(debug_img, (x, y), 5, (0, 0, 255), -1)
         cv2.rectangle(debug_img, (x - text_width//2, y - text_height//2),
                      (x + text_width//2, y + text_height//2), (0, 0, 255), 2)
-        cv2.putText(debug_img, "TEXT", (x - 20, y - text_height//2 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
-
-        # Save debug image
-        debug_path = image_path.replace('.png', '_45_1_4_roi_debug.png')
-        cv2.imwrite(debug_path, debug_img)
-        print(f"    [DEBUG] Saved ROI visualization to: {debug_path}")
-        print(f"    [DEBUG] Text at ({x}, {y}), width={text_width}, height={text_height}")
-        print(f"    [DEBUG] Horizontal ROI: Left({h_left_x1},{h_left_y1})-({h_left_x2},{h_left_y2}) + Right({h_right_x1},{h_right_y1})-({h_right_x2},{h_right_y2})")
-        print(f"    [DEBUG] Vertical ROI: Top({v_top_x1},{v_top_y1})-({v_top_x2},{v_top_y2}) + Bottom({v_bottom_x1},{v_bottom_y1})-({v_bottom_x2},{v_bottom_y2})")
+        cv2.putText(debug_img, measurement.get('text', ''), (x - text_width//2, y - text_height//2 - 5),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
 
     # Process horizontal and vertical ROIs separately
     horizontal_lines = []
@@ -1014,7 +1442,7 @@ def find_lines_near_measurement(image, measurement, image_path=""):
 
     # Helper function to detect lines in an ROI
     def detect_lines_in_roi(roi_image, roi_x_offset, roi_y_offset, debug_name=""):
-        if ("20" in str(measurement.get('text', '')) or "45" in str(measurement.get('text', ''))) and debug_name:
+        if DEBUG_ROIS and debug_name:
             print(f"      [DEBUG] Processing {debug_name} ROI: shape={roi_image.shape}")
 
         # Try color filtering - look for greenish colors
@@ -1050,7 +1478,7 @@ def find_lines_near_measurement(image, measurement, image_path=""):
                                 minLineLength=20,  # Reduced from 30
                                 maxLineGap=30)  # Increased from 20
 
-        if ("20" in str(measurement.get('text', '')) or "45" in str(measurement.get('text', ''))) and debug_name:
+        if DEBUG_ROIS and debug_name:
             if lines is not None:
                 print(f"      [DEBUG] {debug_name}: Found {len(lines)} lines")
                 # Show details of each line for debugging
@@ -1114,7 +1542,7 @@ def find_lines_near_measurement(image, measurement, image_path=""):
                 })
 
     # Debug output for measurements
-    if "20" in str(measurement.get('text', '')) or "45" in str(measurement.get('text', '')) or "14" in str(measurement.get('text', '')):
+    if DEBUG_ROIS:
         print(f"    [DEBUG] Found {len(horizontal_lines)} horizontal lines in H-ROIs")
         print(f"    [DEBUG] Found {len(vertical_lines)} vertical lines in V-ROIs")
         if horizontal_lines:
@@ -1124,45 +1552,73 @@ def find_lines_near_measurement(image, measurement, image_path=""):
             for v in vertical_lines:
                 print(f"      V-line distance: {v['distance']:.1f}")
 
-    # If no lines found, return None
-    if not horizontal_lines and not vertical_lines:
-        return None
-
     # Choose the closest line of each type
     best_h = min(horizontal_lines, key=lambda l: l['distance']) if horizontal_lines else None
     best_v = min(vertical_lines, key=lambda l: l['distance']) if vertical_lines else None
 
     # Determine which orientation is more likely
+    result = None
     if best_h and best_v:
         # If we have both, pick the closer one
         if best_h['distance'] < best_v['distance']:
-            return {
+            result = {
                 'line': best_h['coords'],
                 'orientation': 'horizontal_line',
                 'distance': best_h['distance']
             }
         else:
-            return {
+            result = {
                 'line': best_v['coords'],
                 'orientation': 'vertical_line',
                 'distance': best_v['distance']
             }
     elif best_h:
-        return {
+        result = {
             'line': best_h['coords'],
             'orientation': 'horizontal_line',
             'distance': best_h['distance']
         }
     elif best_v:
-        return {
+        result = {
             'line': best_v['coords'],
             'orientation': 'vertical_line',
             'distance': best_v['distance']
         }
+    # else: result remains None (no lines found)
 
-    return None
+    # Save debug image with classification in filename (if debug mode enabled)
+    # Save BEFORE returning to ensure ALL measurements get visualizations
+    if DEBUG_ROIS and debug_img is not None:
+        import os
+        # Determine classification for filename
+        classification = "UNCLASSIFIED"
+        if result:
+            if result['orientation'] == 'horizontal_line':
+                classification = "WIDTH"
+            elif result['orientation'] == 'vertical_line':
+                classification = "HEIGHT"
 
-def classify_measurements_by_local_lines(image, measurements, all_text_items_list=None, image_path=""):
+        # Clean measurement text for filename
+        clean_text = measurement.get('text', '').replace(' ', '_').replace('/', '-')
+        # Add position to make filename unique for duplicate measurements
+        pos_x = int(measurement.get('x', 0))
+        pos_y = int(measurement.get('y', 0))
+        base_name = os.path.basename(image_path).replace('.png', '')
+
+        # Add classification label to the image
+        cv2.putText(debug_img, f"Result: {classification}",
+                    (x - text_width//2, y + text_height//2 + 25),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
+
+        # Save ROI visualization with classification and position in filename
+        debug_path = os.path.join(os.path.dirname(image_path),
+                                 f"{base_name}_{clean_text}_pos{pos_x}x{pos_y}_{classification}_roi_viz.png")
+        cv2.imwrite(debug_path, debug_img)
+        print(f"    [DEBUG] Saved ROI visualization: {debug_path}")
+
+    return result
+
+def classify_measurements_by_local_lines(image, measurements, all_text_items_list=None, image_path="", save_roi_debug=False):
     classified = {
         'vertical': [],
         'horizontal': [],
@@ -1175,7 +1631,7 @@ def classify_measurements_by_local_lines(image, measurements, all_text_items_lis
         print(f"\n  Analyzing {meas['text']} at ({meas['x']:.0f}, {meas['y']:.0f})")
 
         # Find lines near this measurement
-        line_info = find_lines_near_measurement(image, meas, image_path)
+        line_info = find_lines_near_measurement(image, meas, image_path, save_roi_debug)
 
         if line_info:
             print(f"    Found {line_info['orientation']} at distance {line_info['distance']:.0f}")
@@ -1223,6 +1679,9 @@ def main():
     else:
         image_path = "page_16.png"
 
+    # Check for --save-roi-debug flag
+    save_roi_debug = '--save-roi-debug' in sys.argv
+
     # Get base name and directory for output files
     base_name = os.path.splitext(os.path.basename(image_path))[0]
     image_dir = os.path.dirname(os.path.abspath(image_path))
@@ -1244,7 +1703,7 @@ def main():
 
     # Step 2: Find lines near each measurement and classify
     print("\n[2/2] Finding lines near each measurement...")
-    classified, details, _ = classify_measurements_by_local_lines(image, measurements, all_text_items_list, image_path)
+    classified, details, _ = classify_measurements_by_local_lines(image, measurements, all_text_items_list, image_path, save_roi_debug)
 
     # Results
     print("\n" + "=" * 60)
@@ -1322,31 +1781,122 @@ def main():
     customer_notations = []
 
     if full_text:
-        # Look for common overlay patterns
-        overlay_patterns = [
-            r'(\d+/\d+)\s+OL',  # Like "5/8 OL" or "1/2 OL"
-            r'(\d+/\d+)\s+OL\s+(\w+)',  # Like "5/8 OL KITCHEN" - captures room name
-            r'FULL\s+OL',  # Full overlay
-            r'PARTIAL\s+OL',  # Partial overlay
-        ]
-        for pattern in overlay_patterns:
-            match = re.search(pattern, full_text, re.IGNORECASE)
-            if match:
-                overlay_info = match.group(0)
-                print(f"\n[OK] Found overlay info: {overlay_info}")
-                # Extract room name if it's in the overlay info
-                if match.groups() and len(match.groups()) > 1:
-                    room_name = match.group(2)
-                    print(f"[OK] Found room name: {room_name}")
-                break
+        # Search for overlay notation independently (can be anywhere in text)
+        overlay_pattern = r'(\d+/\d+\s+OL)'
+        overlay_match = re.search(overlay_pattern, full_text, re.IGNORECASE)
+        overlay_part = overlay_match.group(1) if overlay_match else ""
 
-        # If no room name found in overlay, look for common room names
-        if not room_name:
-            room_patterns = ['KITCHEN', 'BATHROOM', 'BATH', 'BEDROOM', 'LAUNDRY', 'CLOSET', 'PANTRY', 'GARAGE', 'OFFICE']
-            for room in room_patterns:
-                if room in full_text.upper():
-                    room_name = room
-                    print(f"[OK] Found room name: {room_name}")
+        # Search for room name independently (not based on overlay position)
+        room_part = ""
+
+        # Comprehensive room keywords list
+        room_keywords = [
+            # Standard rooms
+            'BATH', 'BATHROOM', 'KITCHEN', 'BEDROOM', 'CLOSET', 'PANTRY', 'GARAGE', 'OFFICE',
+            'LAUNDRY', 'ROOM', 'HALL', 'HALLWAY', 'ENTRY', 'FOYER', 'DINING', 'LIVING',
+
+            # Common variations
+            'CASITA', 'GUEST', 'BONUS', 'UP', 'DOWN', 'UPSTAIRS', 'DOWNSTAIRS',
+
+            # Luxury/upscale rooms
+            'BUTLER', 'WINE', 'CELLAR', 'LIBRARY', 'STUDY', 'DEN', 'THEATRE', 'THEATER',
+            'GYM', 'FITNESS', 'SPA', 'SAUNA', 'POOL', 'GAME', 'MEDIA', 'BAR',
+            'BREAKFAST', 'NOOK', 'SUNROOM', 'SOLARIUM', 'CONSERVATORY', 'GALLERY',
+            'STUDIO', 'CRAFT', 'WORKSHOP', 'MUDROOM', 'UTILITY', 'MECHANICAL',
+            'POWDER', 'MASTER', 'SUITE', 'LOFT', 'ATTIC', 'BASEMENT',
+            'PARLOR', 'LOUNGE', 'BILLIARD', 'VAULT', 'SAFE',
+
+            # Outdoor spaces
+            'PATIO', 'OUTDOOR', 'CABANA', 'GAZEBO', 'PAVILION', 'LANAI', 'PORCH',
+            'DECK', 'BALCONY', 'TERRACE', 'COURTYARD',
+
+            # Location modifiers
+            'UPPER', 'LOWER', 'MAIN', 'PRIMARY', 'SECONDARY',
+            'NORTH', 'SOUTH', 'EAST', 'WEST', 'FRONT', 'BACK', 'SIDE'
+        ]
+
+        # Find actual room name by looking for text containing room keywords
+        actual_room = ""
+
+        # First try to find text with room keywords - use more precise pattern
+        for keyword in room_keywords:
+            # Pattern: Look for the keyword with optional modifiers before and room number after
+            # This pattern is more precise to avoid capturing measurements
+            pattern = r'(?:^|[\s])(?:UPSTAIRS|DOWNSTAIRS|MASTER|GUEST|UPPER|LOWER|MAIN|PRIMARY)?\s*' + re.escape(keyword) + r'(?:\s+\d{1,2})?(?:\s|$)'
+            room_match = re.search(pattern, full_text, re.IGNORECASE)
+            if room_match:
+                # Now extract the complete room phrase around the match
+                # Look backward and forward from the match position to get complete room name
+                match_start = room_match.start()
+                match_end = room_match.end()
+
+                # Extract a window around the match
+                start_pos = max(0, match_start - 20)
+                end_pos = min(len(full_text), match_end + 10)
+                window = full_text[start_pos:end_pos]
+
+                # Extract just the room-related words from the window
+                room_pattern = r'(?:UPSTAIRS|DOWNSTAIRS|MASTER|GUEST|UPPER|LOWER|MAIN|PRIMARY)?\s*' + re.escape(keyword) + r'(?:\s+\d{1,2})?'
+                room_extract = re.search(room_pattern, window, re.IGNORECASE)
+                if room_extract:
+                    actual_room = room_extract.group(0).strip()
+                    break
+
+        # If no keyword match, look for possessive patterns (Josh's Room, etc.)
+        if not actual_room:
+            possessive_pattern = r"(\b[A-Z][a-z]+\'s?\s+\w+(?:\s+\w+)*)"
+            possessive_match = re.search(possessive_pattern, full_text)
+            if possessive_match:
+                actual_room = possessive_match.group(1).strip()
+
+        # Use the found room name if available
+        if actual_room:
+            room_part = actual_room
+            print(f"[OK] Found room name: {room_part}")
+
+        # Build the final room name with overlay (if both exist)
+        if room_part:
+            # Check if room_part ends with a number (room number)
+            room_number_match = re.search(r'(.+)\s+(\d+)$', room_part)
+            if room_number_match:
+                # Room has a number at the end (e.g., "UPSTAIRS BATH 1")
+                room_base = room_number_match.group(1)
+                room_num = room_number_match.group(2)
+                if overlay_part:
+                    room_name = f"{room_base}{room_num}_[{overlay_part}]"  # No space before number
+                else:
+                    room_name = f"{room_base}{room_num}"
+                print(f"[OK] Room with number: {room_base} {room_num}")
+            else:
+                # No room number, just use the room name as is
+                if overlay_part:
+                    room_name = f"{room_part}_[{overlay_part}]"
+                else:
+                    room_name = room_part
+                print(f"[OK] Room: {room_part}")
+
+        # Set overlay_info for calculations
+        if overlay_part:
+            overlay_info = overlay_part
+            print(f"[OK] Found overlay: {overlay_info}")
+
+        if room_name:
+            print(f"[OK] Full room name: {room_name}")
+
+        # If we didn't find room name or overlay through the new method,
+        # keep the existing fallback logic
+        if not overlay_part:
+            # Fallback: Look for just overlay patterns without room name
+            overlay_patterns = [
+                r'(\d+/\d+)\s+OL',  # Like "5/8 OL" or "1/2 OL"
+                r'FULL\s+OL',  # Full overlay
+                r'PARTIAL\s+OL',  # Partial overlay
+            ]
+            for pattern in overlay_patterns:
+                match = re.search(pattern, full_text, re.IGNORECASE)
+                if match:
+                    overlay_info = match.group(0)
+                    print(f"\n[OK] Found overlay info (no room): {overlay_info}")
                     break
 
         # Look for customer notations (hinges, special instructions)
@@ -1394,8 +1944,15 @@ def main():
     results = {
         'measurements': [{
             'text': m['text'],
-            'position': [m['x'], m['y']],
+            # Recalculate position from full_bounds if available for more accurate center
+            'position': [
+                (extract_full_bounds(m.get('vertices'))['left'] + extract_full_bounds(m.get('vertices'))['right']) / 2
+                if m.get('vertices') and extract_full_bounds(m.get('vertices')) else m['x'],
+                (extract_full_bounds(m.get('vertices'))['top'] + extract_full_bounds(m.get('vertices'))['bottom']) / 2
+                if m.get('vertices') and extract_full_bounds(m.get('vertices')) else m['y']
+            ],
             'bounds': [m.get('left_bound', m['x']-50), m.get('right_bound', m['x']+50)],
+            'full_bounds': extract_full_bounds(m.get('vertices')) if m.get('vertices') else None,  # Add complete bounding box
             'finished_size': m.get('finished_size', False)  # Include F suffix flag
         } for m in measurements],
         'vertical': classified['vertical'],
