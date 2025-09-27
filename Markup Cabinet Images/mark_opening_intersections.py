@@ -9,6 +9,28 @@ import sys
 
 sys.stdout.reconfigure(encoding='utf-8')
 
+def expand_notation_abbreviation(notation_text):
+    """Expand common abbreviations to full descriptions"""
+    abbreviation_map = {
+        'NH': 'NO HINGES',
+        'SC': 'SOFT CLOSE',
+        'PTO': 'PUSH TO OPEN',
+        'FU': 'FLIP UP',
+        'MW': 'MICROWAVE',
+        'LS': 'LAZY SUSAN',
+        'TPO': 'TRASH PULL OUT',
+        'DB': 'DRAWER BOX',
+        'RO': 'ROLL OUT',
+    }
+
+    # Check if it's an abbreviation we recognize (case insensitive)
+    upper_notation = notation_text.upper()
+    if upper_notation in abbreviation_map:
+        return abbreviation_map[upper_notation]
+
+    # If not an abbreviation, return as-is but capitalize properly
+    return notation_text.upper()
+
 def load_data(base_name, image_dir):
     """Load measurement results and pairing results"""
     import os
@@ -19,6 +41,19 @@ def load_data(base_name, image_dir):
     # Load proximity pairing results
     with open(os.path.join(image_dir, f'{base_name}_openings_data.json'), 'r') as f:
         pairing_data = json.load(f)
+
+    # Map finished_size flags from measurements to openings
+    finished_sizes = {}
+    for meas in measurement_data.get('measurements', []):
+        if meas.get('finished_size', False):
+            finished_sizes[meas['text']] = True
+
+    # Add finished_size flags to each opening (track width and height separately)
+    for opening in pairing_data.get('openings', []):
+        opening['width_finished'] = finished_sizes.get(opening['width'], False)
+        opening['height_finished'] = finished_sizes.get(opening['height'], False)
+        # Overall flag for backward compatibility
+        opening['finished_size'] = opening['width_finished'] or opening['height_finished']
 
     return measurement_data, pairing_data
 
@@ -167,9 +202,15 @@ def mark_intersections(image_path, measurement_data, pairing_data):
 
     for i, opening in enumerate(openings):
 
-        # Get width and height measurement positions
-        width_pos = find_measurement_positions(measurements, opening['width'])
-        height_pos = find_measurement_positions(measurements, opening['height'])
+        # Use the positions saved in the openings data (from proximity pairing)
+        # This ensures we use the exact positions that were paired, not the first match
+        if 'width_pos' in opening and 'height_pos' in opening:
+            width_pos = opening['width_pos']
+            height_pos = opening['height_pos']
+        else:
+            # Fallback to old method if positions not saved (backward compatibility)
+            width_pos = find_measurement_positions(measurements, opening['width'])
+            height_pos = find_measurement_positions(measurements, opening['height'])
 
         if width_pos and height_pos:
             # Take X from width, Y from height
@@ -248,10 +289,25 @@ def mark_intersections(image_path, measurement_data, pairing_data):
             cv2.circle(annotated, (int(height_pos[0]), int(height_pos[1])), 5, color, 2)
 
             # Add dimension labels near the marker (use 'x' not '×' to avoid encoding issues)
-            dim_text = f"{opening['width']} x {opening['height']}"
+            # Include F suffix if present
+            width_text = opening['width']
+            if opening.get('width_finished', False):
+                width_text += "F"
+            height_text = opening['height']
+            if opening.get('height_finished', False):
+                height_text += "F"
+            dim_text = f"{width_text} x {height_text}"
+
+            # Add customer notations if present
+            notation_text = ""
+            if 'notations' in opening and opening['notations']:
+                # Expand abbreviations to full text
+                expanded_notations = [expand_notation_abbreviation(n) for n in opening['notations']]
+                notation_text = ", ".join(expanded_notations)
+
             label_y = marker_y + 55  # Below the marker circle
 
-            # Background for text
+            # Background for dimension text
             (text_width, text_height), _ = cv2.getTextSize(dim_text, font, 0.5, 1)
             cv2.rectangle(annotated,
                          (marker_x - text_width//2 - 3, label_y - text_height - 3),
@@ -262,6 +318,22 @@ def mark_intersections(image_path, measurement_data, pairing_data):
             cv2.putText(annotated, dim_text,
                        (marker_x - text_width//2, label_y),
                        font, 0.5, color, 1)
+
+            # Draw notation text below dimensions if present
+            if notation_text:
+                notation_y = label_y + 20  # Below the dimensions
+
+                # Background for notation text
+                (notation_width, notation_height), _ = cv2.getTextSize(notation_text, font, 0.45, 1)
+                cv2.rectangle(annotated,
+                             (marker_x - notation_width//2 - 3, notation_y - notation_height - 3),
+                             (marker_x + notation_width//2 + 3, notation_y + 3),
+                             (255, 255, 255), -1)
+
+                # Draw notation text in red
+                cv2.putText(annotated, notation_text,
+                           (marker_x - notation_width//2, notation_y),
+                           font, 0.45, color, 1)
 
             # Draw crosshair at intersection
             cross_size = 30
@@ -299,10 +371,37 @@ def mark_intersections(image_path, measurement_data, pairing_data):
     # Add legend with red indicators - LOWER LEFT with BIGGER TEXT
     image_height = annotated.shape[0]
     # Reduced height since overlay is now in title, not separate line
-    legend_height = 50 + (len(openings) * 40)  # No extra space for overlay line
+    legend_height = 50 + (len(openings) * 40)  # Base height
     # Leave about 1 inch (96 pixels) at the bottom of the page
     legend_y_start = image_height - legend_height - 100  # 100px from bottom for 1"+ margin
-    legend_width = 750  # Wider to fit "Cabinet Finish Sizes" title
+
+    # Check if we need more width for notations and F note
+    max_text_width = 750
+    for opening in openings:
+        # Build the text as it will appear
+        width_text = opening['width']
+        if opening.get('width_finished', False):
+            width_text += "F"  # No space before F
+        height_text = opening['height']
+        if opening.get('height_finished', False):
+            height_text += "F"  # No space before F
+        test_text = f"#{opening['number']}: {width_text} W x {height_text} H"
+
+        # Add inline F note if needed
+        if opening.get('finished_size', False):
+            test_text += " - F = Finished size, no overlay added"
+
+        # Add customer notations
+        if 'notations' in opening and opening['notations']:
+            expanded_notations = [expand_notation_abbreviation(n) for n in opening['notations']]
+            test_text += f" ({', '.join(expanded_notations)})"
+
+        # Estimate text width (approximately 12 pixels per character at scale 0.7)
+        text_width_estimate = len(test_text) * 12 + 100  # Add margin for circle
+        if text_width_estimate > max_text_width:
+            max_text_width = text_width_estimate
+
+    legend_width = max_text_width  # Use calculated width
 
     # White background with black border
     legend_bottom = legend_y_start + legend_height
@@ -380,17 +479,36 @@ def mark_intersections(image_path, measurement_data, pairing_data):
         cv2.circle(annotated, (35, y_pos - 8), 12, (255, 255, 255), -1)  # White fill
         cv2.circle(annotated, (35, y_pos - 8), 12, color, 3)  # Red outline
 
-        # Process specification - add overlay if found
-        if overlay_amount > 0:
+        # Process specification - add overlay if found and not a finished size
+        if overlay_amount > 0 and not opening.get('finished_size', False):
             # Add overlay to both width and height
             width_with_overlay = add_overlay_to_dimension(opening['width'], overlay_amount)
             height_with_overlay = add_overlay_to_dimension(opening['height'], overlay_amount)
             spec_text = f"{width_with_overlay} W x {height_with_overlay} H"
         else:
-            # No overlay, use original specification
-            spec_text = opening['specification'].replace('×', 'x')
+            # No overlay (either none specified or it's a finished size)
+            # Build spec with (F) indicators inline
+            width_text = opening['width']
+            if opening.get('width_finished', False):
+                width_text += "F"  # No space before F
+            height_text = opening['height']
+            if opening.get('height_finished', False):
+                height_text += "F"  # No space before F
+            spec_text = f"{width_text} W x {height_text} H"
 
         text = f"#{opening['number']}: {spec_text}"
+
+        # If this opening has F, add the note inline
+        if opening.get('finished_size', False):
+            text += " - F = Finished size, no overlay added"
+
+        # Add customer notations if present
+        if 'notations' in opening and opening['notations']:
+            # Expand abbreviations to full text
+            expanded_notations = [expand_notation_abbreviation(n) for n in opening['notations']]
+            notations_text = ", ".join(expanded_notations)
+            text += f" ({notations_text})"
+
         cv2.putText(annotated, text, (60, y_pos),
                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2)
 

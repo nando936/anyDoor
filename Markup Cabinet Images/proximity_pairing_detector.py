@@ -43,7 +43,10 @@ def load_measurement_results(results_file):
     # Get room name if available
     room_name = data.get('room_name', '')
 
-    return measurements, room_name
+    # Get customer notations if available
+    customer_notations = data.get('customer_notations', [])
+
+    return measurements, room_name, customer_notations
 
 def check_if_stacked(measurements, dimension_type, tolerance=100):
     """
@@ -84,6 +87,52 @@ def find_closest_width_for_height(height, widths):
             closest_width = width
 
     return closest_width, min_distance
+
+def associate_notations_with_openings(openings, customer_notations):
+    """Associate customer notations with the nearest opening based on proximity"""
+    if not customer_notations:
+        return openings
+
+    print("\n" + "=" * 60)
+    print("ASSOCIATING CUSTOMER NOTATIONS WITH OPENINGS")
+    print("-" * 60)
+
+    for notation in customer_notations:
+        notation_x = notation['x']
+        notation_y = notation['y']
+        notation_text = notation['text']
+
+        # Find the closest opening to this notation
+        min_distance = float('inf')
+        closest_opening_idx = None
+
+        for idx, opening in enumerate(openings):
+            # Calculate distance to opening center (average of width and height positions)
+            width_x, width_y = opening['width_pos']
+            height_x, height_y = opening['height_pos']
+
+            # Opening center is roughly the intersection point
+            opening_x = (width_x + height_x) / 2
+            opening_y = (width_y + height_y) / 2
+
+            distance = np.sqrt((notation_x - opening_x)**2 + (notation_y - opening_y)**2)
+
+            if distance < min_distance:
+                min_distance = distance
+                closest_opening_idx = idx
+
+        # Associate notation with closest opening if within reasonable distance
+        if closest_opening_idx is not None and min_distance < 200:  # 200 pixels threshold
+            if 'notations' not in openings[closest_opening_idx]:
+                openings[closest_opening_idx]['notations'] = []
+            openings[closest_opening_idx]['notations'].append(notation_text)
+
+            print(f"Notation '{notation_text}' at ({notation_x:.0f}, {notation_y:.0f})")
+            print(f"  Associated with opening #{closest_opening_idx + 1}: {openings[closest_opening_idx]['width']} W x {openings[closest_opening_idx]['height']} H")
+            print(f"  Distance: {min_distance:.0f} pixels")
+            print()
+
+    return openings
 
 def pair_by_proximity(measurements):
     """
@@ -147,18 +196,96 @@ def pair_by_proximity(measurements):
 
 
     else:
-        print("\n[LOGIC] Widths are side-by-side → Different pairing logic needed")
-        # This would need different logic for side-by-side layouts
-        # For now, use simple all-combinations
+        print("\n[LOGIC] Widths are side-by-side → Finding closest height above each width")
+        print()
+
+        # Track which heights have been used
+        used_heights = set()
+
+        # For each width, find the closest height that's above it (smaller Y value)
         for width in widths:
+            print(f"Width '{width['text']}' at position ({width['x']:.0f}, {width['y']:.0f})")
+
+            best_height = None
+            best_distance = float('inf')
+
             for height in heights:
+                # Skip if this height has already been paired
+                if id(height) in used_heights:
+                    continue
+
+                # Calculate distance
+                distance = np.sqrt((height['x'] - width['x'])**2 + (height['y'] - width['y'])**2)
+
+                # Prefer heights that are reasonably close in X position (same opening area)
+                x_distance = abs(height['x'] - width['x'])
+                y_distance = abs(height['y'] - width['y'])
+
+                # Weight X distance more heavily for better pairing
+                # This helps pair measurements that belong to the same cabinet opening
+                weighted_distance = distance + (x_distance * 0.5)
+
+                print(f"  Checking height '{height['text']}' at ({height['x']:.0f}, {height['y']:.0f})")
+                print(f"    Distance: {distance:.0f} pixels (weighted: {weighted_distance:.0f})")
+
+                if weighted_distance < best_distance:
+                    best_distance = weighted_distance
+                    best_height = height
+
+            if best_height:
+                print(f"  → PAIRED with '{best_height['text']}' (distance: {best_distance:.0f})")
                 openings.append({
                     'width': width['text'],
-                    'height': height['text'],
+                    'height': best_height['text'],
                     'width_pos': (width['x'], width['y']),
-                    'height_pos': (height['x'], height['y']),
-                    'distance': np.sqrt((height['x'] - width['x'])**2 + (height['y'] - width['y'])**2)
+                    'height_pos': (best_height['x'], best_height['y']),
+                    'distance': best_distance
                 })
+                used_heights.add(id(best_height))
+            else:
+                print(f"  → No height found above this width")
+            print()
+
+        # Second pass: Handle any unpaired heights
+        unpaired_heights = [h for h in heights if id(h) not in used_heights]
+        if unpaired_heights:
+            print("Second pass - handling unpaired heights:")
+            print()
+
+            for height in unpaired_heights:
+                print(f"Unpaired height '{height['text']}' at position ({height['x']:.0f}, {height['y']:.0f})")
+
+                # Find the closest width to this height
+                best_width = None
+                best_distance = float('inf')
+
+                for width in widths:
+                    distance = np.sqrt((height['x'] - width['x'])**2 + (height['y'] - width['y'])**2)
+                    print(f"  Checking width '{width['text']}' at ({width['x']:.0f}, {width['y']:.0f})")
+                    print(f"    Distance: {distance:.0f} pixels")
+
+                    if distance < best_distance:
+                        best_distance = distance
+                        best_width = width
+
+                if best_width:
+                    print(f"  → PAIRED with '{best_width['text']}' (distance: {best_distance:.0f})")
+                    openings.append({
+                        'width': best_width['text'],
+                        'height': height['text'],
+                        'width_pos': (best_width['x'], best_width['y']),
+                        'height_pos': (height['x'], height['y']),
+                        'distance': best_distance
+                    })
+                else:
+                    print(f"  → No width found for this height")
+                print()
+
+            # Check for any remaining unpaired dimensions
+            print("Final status:")
+            print(f"  Total openings found: {len(openings)}")
+            if len(openings) < len(heights):
+                print(f"  Note: Some dimensions could not be paired")
 
     return openings
 
@@ -175,15 +302,28 @@ def main():
     else:
         image_path = "page_16.png"
 
-    # Get base name and directory for input/output files
-    base_name = os.path.splitext(os.path.basename(image_path))[0]
-    image_dir = os.path.dirname(os.path.abspath(image_path))
+    # Handle both file paths and directory paths
+    if os.path.isdir(image_path):
+        # If it's a directory, look for page_*.json files
+        image_dir = os.path.abspath(image_path)
+        # Find the page file in the directory
+        import glob
+        json_files = glob.glob(os.path.join(image_dir, "page_*_measurements_data.json"))
+        if json_files:
+            base_name = os.path.basename(json_files[0]).replace("_measurements_data.json", "")
+        else:
+            print(f"[ERROR] No measurements data file found in {image_dir}")
+            return
+    else:
+        # Get base name and directory for input/output files
+        base_name = os.path.splitext(os.path.basename(image_path))[0]
+        image_dir = os.path.dirname(os.path.abspath(image_path))
 
     # Load measurements
     results_file = os.path.join(image_dir, f"{base_name}_measurements_data.json")
 
     try:
-        measurements, room_name = load_measurement_results(results_file)
+        measurements, room_name, customer_notations = load_measurement_results(results_file)
     except FileNotFoundError:
         print(f"\n[ERROR] Results file not found: {results_file}")
         print("Please run measurement_based_detector.py first")
@@ -193,8 +333,14 @@ def main():
     print(f"  Heights: {[h['text'] for h in measurements['heights']]}")
     print(f"  Widths: {[w['text'] for w in measurements['widths']]}")
 
+    if customer_notations:
+        print(f"  Customer notations: {[n['text'] for n in customer_notations]}")
+
     # Find opening pairs
     openings = pair_by_proximity(measurements)
+
+    # Associate customer notations with openings
+    openings = associate_notations_with_openings(openings, customer_notations)
 
     # If no openings found, report it
     if len(openings) == 0:
@@ -214,6 +360,8 @@ def main():
         print(f"  {opening['width']} W × {opening['height']} H")
         print(f"  Width at: ({opening['width_pos'][0]:.0f}, {opening['width_pos'][1]:.0f})")
         print(f"  Height at: ({opening['height_pos'][0]:.0f}, {opening['height_pos'][1]:.0f})")
+        if 'notations' in opening and opening['notations']:
+            print(f"  Customer notations: {', '.join(opening['notations'])}")
 
 
     # Create annotated image
@@ -277,6 +425,9 @@ def main():
                 'number': i,
                 'width': opening['width'],
                 'height': opening['height'],
+                'width_pos': opening['width_pos'],
+                'height_pos': opening['height_pos'],
+                'notations': opening.get('notations', []),
                 'specification': f"{opening['width']} W x {opening['height']} H"
             }
             for i, opening in enumerate(openings, 1)
