@@ -1,0 +1,78 @@
+ANYDOOR PROJECT - CABINET OPENING DETECTION CONTINUE FILE
+==========================================================
+Date: 2025-09-27
+Last Working Directory: //vmware-host/Shared Folders/suarez group qb/customers/raised panel/Measures-2025-09-08(17-08)/all_pages
+
+COMPLETED WORK:
+--------------
+1. Fixed ROI Positioning:
+   - Vertical ROIs now use text width only (not padded horizontally)
+   - Horizontal ROIs now use text height only (not padded vertically)
+   - ROIs properly centered on text bounds
+
+2. Reduced ROI Sizes (to avoid crashing into other dimensions):
+   - Vertical ROI extension: Reduced from text_height * 3 to text_height * 1.5 (halved)
+   - Horizontal ROI extension: Reduced from text_width * 2 to text_width * 1 (halved)
+
+3. Fixed Debug Visualization Saving:
+   - Moved save block before early returns in find_lines_near_measurement()
+   - Now ALL measurements get visualization files (previously only some)
+   - Added --save-roi-debug flag to process_cabinet_page.py
+
+4. Improved Debug Output:
+   - Removed separate horizontal/vertical ROI files (only keeping visualizations)
+   - Added position to filename for duplicate measurements (e.g., pos829x1194)
+   - Added classification result to filename (WIDTH/HEIGHT/UNCLASSIFIED)
+
+CURRENT STATUS:
+--------------
+Page 3 Results:
+- All 5 measurements now get ROI visualization files
+- Classifications: 3 HEIGHT (20 1/16, 9 1/4, 20), 2 WIDTH (23, 12 7/8)
+- Files created: page_3_*_roi_viz.png with position and classification
+- [OK] SUCCESS: NOW DETECTING ALL 3 OPENINGS ON PAGE 3!
+  - Opening 1: 23" W x 20 1/16" H (FIXED: was incorrectly "5" due to OCR error)
+  - Opening 2: 12 7/8" W x 9 1/4" H
+  - Opening 3: 12 7/8" W x 20" H (shares width with opening 2)
+
+OCR VERIFICATION FIX COMPLETED:
+------------------------------
+- Fixed zoom verification to only consider text whose bounding box contains the center point
+- This prevents incorrect corrections like "23" → "5" when nearby text is captured
+- The fix filters OCR results to only text at the zoom center, avoiding text from above/below
+
+REMAINING ISSUES:
+----------------
+1. OCR Issue: "5 1/2" being detected as separate "5" and "51/2"
+   - User said to handle OCR errors separately, not hardcode fixes
+   - The "5" is actually part of "5 1/2" that's not assembled properly
+
+FILES MODIFIED:
+--------------
+1. measurement_based_detector.py:
+   - Line 1085: h_strip_extension = text_width * 1 (was * 2)
+   - Line 1101: v_strip_extension = int(text_height * 1.5) (was * 3)
+   - Lines 1260-1295: Restructured to save visualizations before returns
+
+2. process_cabinet_page.py:
+   - Line 32: Added --save-roi-debug flag to measurement detector call
+
+TO CONTINUE:
+-----------
+1. Check if reduced ROI sizes and better classifications now detect 3 openings on page 3
+2. Test on other pages to verify improvements work generally
+3. Address OCR assembly issues (5 1/2 problem) in separate work
+4. Fine-tune ROI sizes if still having issues with dimension line detection
+
+LAST COMMANDS RUN:
+-----------------
+cd "//vmware-host/Shared Folders/suarez group qb/customers/raised panel/Measures-2025-09-08(17-08)/all_pages"
+python "C:/Users/nando/Projects/anyDoor/Markup Cabinet Images/measurement_based_detector.py" page_3.png --save-roi-debug
+
+VISUALIZATION FILES CREATED:
+---------------------------
+page_3_12_7-8_pos829x1194_WIDTH_roi_viz.png
+page_3_20_1-16_pos1186x1409_HEIGHT_roi_viz.png
+page_3_20_1-16_pos494x1308_HEIGHT_roi_viz.png
+page_3_5_pos472x1147_WIDTH_roi_viz.png
+page_3_9_1-4_pos714x1412_HEIGHT_roi_viz.png

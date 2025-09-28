@@ -28,7 +28,8 @@ def process_page(image_path):
     print("[1/3] Running measurement detection and classification...")
     print("-" * 60)
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    result = subprocess.run([sys.executable, os.path.join(script_dir, "measurement_based_detector.py"), image_path],
+    # Add --save-roi-debug flag to generate visualizations for ALL measurements
+    result = subprocess.run([sys.executable, os.path.join(script_dir, "measurement_based_detector.py"), image_path, "--save-roi-debug"],
                           capture_output=True, text=True)
 
     if result.returncode != 0:
@@ -107,6 +108,8 @@ def process_page(image_path):
     print("=" * 80)
 
     # Clean up temporary files - keep only the original and final marked image
+    # TEMPORARILY DISABLED FOR DEBUGGING
+    """
     print("\n" + "=" * 80)
     print("CLEANING UP TEMPORARY FILES")
     print("-" * 60)
@@ -133,6 +136,8 @@ def process_page(image_path):
             print(f"[OK] Kept original image and final output: {final_output}")
     else:
         print("[OK] No temporary files to clean up")
+    """
+    print("\n[DEBUG MODE] Keeping all temporary files for debugging")
 
     print("=" * 80)
 

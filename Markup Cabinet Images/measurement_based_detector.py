@@ -157,6 +157,18 @@ def verify_measurement_with_zoom(image_path, x, y, text, api_key, group_bounds=N
     zoom_factor = 3
     zoomed = cv2.resize(cropped, None, fx=zoom_factor, fy=zoom_factor, interpolation=cv2.INTER_CUBIC)
 
+    # Save debug images for inspection
+    import os
+    save_debug = True  # Set to False to disable debug output
+    if save_debug:
+        output_dir = os.path.dirname(image_path.replace('\\', '/'))
+        safe_text = text.replace(' ', '_').replace('/', '-').replace(':', '').replace('+', 'plus').replace('–', 'dash')[:50]
+
+        # Save cropped image
+        crop_file = os.path.join(output_dir, f"DEBUG_crop_{safe_text}_pos{int(x)}x{int(y)}.png")
+        cv2.imwrite(crop_file, cropped)
+        print(f"    [DEBUG] Saved crop: {os.path.basename(crop_file)}")
+
     # Helper function to run OCR
     def run_ocr_and_extract(img, label=""):
         _, buffer = cv2.imencode('.png', img)
@@ -182,15 +194,16 @@ def verify_measurement_with_zoom(image_path, x, y, text, api_key, group_bounds=N
                     if label:
                         print(f"    {label}: '{full_text.replace(chr(10), ' ')}'")
 
-                    # Look for measurement patterns
+                    # Find ALL measurement patterns and their positions
                     patterns = [
                         r'\b(\d+\s+\d+/\d+)\b',      # "5 1/2" or "9 1/4"
                         r'\b(\d+)\s+(\d+/\d+)\b',    # "5" "1/2" on different lines
+                        r'\b(\d{1,2})\b(?!\s*[/:])' # Standalone numbers like "20" (not followed by / or :)
                     ]
 
+                    measurements_found = []
                     for pattern in patterns:
-                        match = re.search(pattern, full_text)
-                        if match:
+                        for match in re.finditer(pattern, full_text):
                             if match.lastindex == 2:
                                 measurement = f"{match.group(1)} {match.group(2)}"
                             else:
@@ -198,7 +211,47 @@ def verify_measurement_with_zoom(image_path, x, y, text, api_key, group_bounds=N
 
                             first_num = int(re.match(r'^(\d+)', measurement).group(1))
                             if 2 <= first_num <= 100:
-                                return measurement
+                                measurements_found.append(measurement)
+
+                    # If multiple measurements found, find the one closest to center
+                    if len(measurements_found) > 1:
+                        print(f"    Multiple measurements found: {measurements_found}")
+                        zoomed_height, zoomed_width = img.shape[:2]
+                        center_x = zoomed_width / 2
+                        center_y = zoomed_height / 2
+
+                        best_measurement = None
+                        best_distance = float('inf')
+
+                        # Check each measurement's position
+                        for measurement in measurements_found:
+                            # Find this measurement in the individual annotations
+                            for ann in annotations[1:]:
+                                text_item = ann['description'].strip()
+                                # Check if this annotation is part of the measurement
+                                if text_item in measurement or measurement.startswith(text_item):
+                                    vertices = ann.get('boundingPoly', {}).get('vertices', [])
+                                    if len(vertices) >= 4:
+                                        x_coords = [v.get('x', 0) for v in vertices]
+                                        y_coords = [v.get('y', 0) for v in vertices]
+                                        bbox_center_x = sum(x_coords) / 4
+                                        bbox_center_y = sum(y_coords) / 4
+
+                                        # Calculate distance from image center
+                                        distance = ((bbox_center_x - center_x) ** 2 + (bbox_center_y - center_y) ** 2) ** 0.5
+
+                                        if distance < best_distance:
+                                            best_distance = distance
+                                            best_measurement = measurement
+                                            print(f"    '{measurement}' distance from center: {distance:.1f}")
+
+                        if best_measurement:
+                            print(f"    Choosing closest to center: '{best_measurement}'")
+                            return best_measurement
+
+                    # If only one measurement, return it
+                    elif len(measurements_found) == 1:
+                        return measurements_found[0]
 
                     # Check center text
                     zoomed_height, zoomed_width = img.shape[:2]
@@ -225,33 +278,38 @@ def verify_measurement_with_zoom(image_path, x, y, text, api_key, group_bounds=N
 
         return None
 
-    # First attempt with normal OCR
-    result = run_ocr_and_extract(zoomed, "Normal OCR")
+    # First attempt with HSV OCR (matching the initial pass)
+    zoomed_hsv = apply_hsv_preprocessing(zoomed)
+
+    # Save HSV debug image
+    if save_debug:
+        zoom_hsv_file = os.path.join(output_dir, f"DEBUG_zoom_hsv_{safe_text}_pos{int(x)}x{int(y)}.png")
+        cv2.imwrite(zoom_hsv_file, zoomed_hsv)
+        print(f"    [DEBUG] Saved HSV zoom: {os.path.basename(zoom_hsv_file)}")
+
+    result = run_ocr_and_extract(zoomed_hsv, "HSV OCR")
 
     # Check if result is unrealistic (e.g., "512" instead of "5 1/2")
+    # Since we're already using HSV, if the result is still unrealistic,
+    # we can try normal OCR as a fallback
     if result and re.match(r'^\d+$', result):
         num = int(result)
         if num > 100:
-            print(f"    Result '{result}' is unrealistic (>100), trying HSV preprocessing...")
+            print(f"    HSV result '{result}' is unrealistic (>100), trying normal OCR as fallback...")
 
-            # Apply HSV preprocessing and retry
-            zoomed_hsv = apply_hsv_preprocessing(zoomed)
-            hsv_result = run_ocr_and_extract(zoomed_hsv, "HSV preprocessed OCR")
+            # Try normal OCR as fallback
+            normal_result = run_ocr_and_extract(zoomed, "Normal OCR fallback")
 
-            if hsv_result:
-                print(f"    Verification: HSV found '{hsv_result}'")
-                return hsv_result
-            # Fall through if HSV didn't help
-
-    # Also check if original text looks unrealistic and we should try HSV
-    if re.match(r'^\d{3,}$', text) and int(text) > 100:
-        print(f"    Original text '{text}' is unrealistic, trying HSV preprocessing...")
-        zoomed_hsv = apply_hsv_preprocessing(zoomed)
-        hsv_result = run_ocr_and_extract(zoomed_hsv, "HSV preprocessed OCR")
-
-        if hsv_result:
-            print(f"    Verification: HSV found '{hsv_result}'")
-            return hsv_result
+            if normal_result:
+                # Check if normal result is more reasonable
+                if re.match(r'^\d+$', normal_result):
+                    normal_num = int(normal_result)
+                    if normal_num <= 100:
+                        print(f"    Verification: Normal OCR found '{normal_result}'")
+                        return normal_result
+                else:
+                    print(f"    Verification: Normal OCR found '{normal_result}'")
+                    return normal_result
 
     # Return the best result we have
     if result:
@@ -636,6 +694,26 @@ def get_measurements_from_vision_api(image_path, api_key, debug_text=None):
                 groups = []
                 used_indices = set()
 
+                # Helper function to check if group forms a complete measurement
+                def is_complete_measurement(group_items):
+                    """Check if the group forms a complete measurement"""
+                    texts = [item['text'] for item in group_items]
+                    combined = ' '.join(texts)
+
+                    # Check for whole number
+                    has_whole = any(re.match(r'^\d+$', t) and 1 <= int(t) <= 100 for t in texts)
+                    # Check for fraction
+                    has_fraction = any(re.match(r'^\d+/\d+$', t) or '/' in t for t in texts)
+
+                    # Complete if: whole + fraction, or just whole number > 5
+                    if has_whole and has_fraction:
+                        return True
+                    if has_whole and len(group_items) == 1:
+                        # Single whole number is complete if it's reasonable
+                        num = int(group_items[0]['text'])
+                        return 5 <= num <= 100
+                    return False
+
                 for i, item in enumerate(all_text_items_list):
                     if i in used_indices:
                         continue
@@ -648,7 +726,7 @@ def get_measurements_from_vision_api(image_path, api_key, debug_text=None):
                     group = [item]
                     used_indices.add(i)
 
-                    # Find nearby items (within 120 pixels horizontally, 30 pixels vertically)
+                    # Find nearby items to complete the measurement
                     for j, other in enumerate(all_text_items_list):
                         if j in used_indices:
                             continue
@@ -657,9 +735,15 @@ def get_measurements_from_vision_api(image_path, api_key, debug_text=None):
                         x_dist = abs(other['x'] - item['x'])
                         y_dist = abs(other['y'] - item['y'])
 
-                        if x_dist < 120 and y_dist < 30:  # Same line, close together (increased from 100 to 120 for "35 5/16")
+                        if x_dist < 120 and y_dist < 30:  # Same line, close together
+                            # Add to group
                             group.append(other)
                             used_indices.add(j)
+
+                            # Check if measurement is now complete
+                            if is_complete_measurement(group):
+                                # Stop adding more items
+                                break
 
                     groups.append(group)
 
