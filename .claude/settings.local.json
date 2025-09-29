@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python:*)",
+      "Bash(for i in {13..20})",
+      "Bash(do echo \"=== PAGE $i ===\")",
+      "Bash(done)",
+      "Bash(for i in 14 15 16 17 18 19 20)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

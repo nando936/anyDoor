@@ -960,9 +960,10 @@ def extract_measurements_from_text(text):
     matches = re.findall(pattern, text)
     return matches
 
-def verify_measurement_at_center_with_logic(image_path, center, bounds, texts, api_key, center_index=0):
+def verify_measurement_at_center_with_logic(image_path, center, bounds, texts, api_key, center_index=0, save_debug=False):
     """Same as verify_measurement_at_center but returns (measurement, logic_description)"""
     import re
+    import os
     logic_steps = []
 
     # Phase 2: Zoom and verify measurement at a specific center
@@ -986,15 +987,47 @@ def verify_measurement_at_center_with_logic(image_path, center, bounds, texts, a
     image = cv2.imread(image_path)
     cropped = image[crop_y1:crop_y2, crop_x1:crop_x2]
 
-    # Apply HSV preprocessing
-    hsv = cv2.cvtColor(cropped, cv2.COLOR_BGR2HSV)
+    # Apply zoom to make text larger for better OCR
+    zoom_factor = ZOOM_CONFIG.get('zoom_factor', 3)
+    zoomed = cv2.resize(cropped, None, fx=zoom_factor, fy=zoom_factor, interpolation=cv2.INTER_CUBIC)
+
+    # Apply HSV preprocessing to zoomed image
+    hsv = cv2.cvtColor(zoomed, cv2.COLOR_BGR2HSV)
     lower_green = np.array(HSV_CONFIG['lower_green'])
     upper_green = np.array(HSV_CONFIG['upper_green'])
     mask = cv2.inRange(hsv, lower_green, upper_green)
     mask_3channel = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
     preprocessed = cv2.bitwise_not(mask_3channel)
 
-    # Run OCR on zoomed region
+    # Save debug images if requested
+    if save_debug:
+        # Extract page number from image path
+        page_num = ""
+        if "page_" in image_path.lower():
+            page_match = re.search(r'page_(\d+)', image_path.lower())
+            if page_match:
+                page_num = f"page{page_match.group(1)}_"
+
+        # Create text string from texts list
+        text_str = "_".join(texts[:3]).replace("/", "-").replace(" ", "")[:20]
+
+        # Get directory of source image
+        image_dir = os.path.dirname(os.path.abspath(image_path))
+
+        # Save debug images - now including zoomed versions
+        debug_base = f"DEBUG_{page_num}M{center_index}_pos{int(cx)}x{int(cy)}_{text_str}"
+        debug_crop = os.path.join(image_dir, f"{debug_base}_crop.png")
+        debug_zoom = os.path.join(image_dir, f"{debug_base}_zoom{zoom_factor}x.png")
+        debug_hsv = os.path.join(image_dir, f"{debug_base}_hsv_zoom{zoom_factor}x.png")
+
+        cv2.imwrite(debug_crop, cropped)
+        cv2.imwrite(debug_zoom, zoomed)
+        cv2.imwrite(debug_hsv, preprocessed)
+        print(f"    [DEBUG] Saved: {os.path.basename(debug_crop)}")
+        print(f"    [DEBUG] Saved: {os.path.basename(debug_zoom)}")
+        print(f"    [DEBUG] Saved: {os.path.basename(debug_hsv)}")
+
+    # Run OCR on zoomed preprocessed region
     _, buffer = cv2.imencode('.png', preprocessed)
     content = base64.b64encode(buffer).decode('utf-8')
 
@@ -1050,6 +1083,35 @@ def verify_measurement_at_center_with_logic(image_path, center, bounds, texts, a
         })
 
     # Group items that are horizontally adjacent (for measurements like "13 7/8")
+    # Adjust thresholds for zoomed image
+    y_threshold = 15 * zoom_factor  # Scale for zoom
+    x_threshold = 90 * zoom_factor  # Scale for zoom
+
+    # Filter out false positive "1"s (vertical lines detected as "1")
+    filtered_items = []
+    for item in individual_items:
+        if item['text'] == '1':
+            # Check if there's a fraction nearby
+            has_nearby_fraction = False
+            for other in individual_items:
+                if other['text'] in ['/2', '/4', '/8', '/16', '1/2', '1/4', '3/8', '5/8', '3/4', '7/8', '1/16', '3/16', '5/16', '7/16', '9/16', '11/16', '13/16', '15/16']:
+                    x_dist = abs(other['x'] - item['x'])
+                    y_dist = abs(other['y'] - item['y'])
+                    # Check if fraction is nearby (within grouping distance)
+                    if x_dist < x_threshold and y_dist < y_threshold:
+                        has_nearby_fraction = True
+                        break
+
+            # Check aspect ratio if we have bounding box info
+            if not has_nearby_fraction:
+                # For now, skip isolated "1"s as they're likely false positives
+                print(f"    Filtered out isolated '1' at ({item['x']:.0f}, {item['y']:.0f}) - likely a false positive")
+                continue
+
+        filtered_items.append(item)
+
+    individual_items = filtered_items
+
     measurement_groups = []
     used_indices = set()
 
@@ -1065,11 +1127,11 @@ def verify_measurement_at_center_with_logic(image_path, center, bounds, texts, a
             if j in used_indices or j <= i:
                 continue
 
-            # Check if on same line (y within 15 pixels) and close horizontally (x within 90 pixels)
-            if abs(other['y'] - item['y']) < 15:
+            # Check if on same line (y within threshold) and close horizontally (x within threshold)
+            if abs(other['y'] - item['y']) < y_threshold:
                 # Check if it's to the right and close enough
                 x_dist = other['x'] - group[-1]['x']  # Distance from rightmost item in group
-                if 0 < x_dist < 90:
+                if 0 < x_dist < x_threshold:
                     group.append(other)
                     used_indices.add(j)
 
@@ -1133,9 +1195,9 @@ def verify_measurement_at_center_with_logic(image_path, center, bounds, texts, a
         logic_steps.append("No measurements with numbers found")
         return None, " | ".join(logic_steps)
 
-    # Find closest to center
-    crop_cx = cx - crop_x1
-    crop_cy = cy - crop_y1
+    # Find closest to center - adjust for zoom
+    crop_cx = (cx - crop_x1) * zoom_factor  # Scale center position for zoomed image
+    crop_cy = (cy - crop_y1) * zoom_factor
 
     best_meas = None
     best_dist = float('inf')
@@ -1161,7 +1223,251 @@ def verify_measurement_at_center_with_logic(image_path, center, bounds, texts, a
 
     return None, "No measurements found"
 
-def create_visualization(image_path, groups, measurements, measurement_logic=None, save_viz=True, opencv_regions=None):
+def find_lines_near_measurement(image, measurement, save_roi_debug=False):
+    """Find lines near a specific measurement position that match the text color"""
+    x = int(measurement['position'][0])
+    y = int(measurement['position'][1])
+
+    # Enable debug for troubleshooting
+    DEBUG_MODE = True  # Force debug mode to see what's happening
+
+    # Use bounds if available
+    if 'bounds' in measurement:
+        bounds = measurement['bounds']
+        text_left = int(bounds['left'])
+        text_right = int(bounds['right'])
+        text_top = int(bounds['top'])
+        text_bottom = int(bounds['bottom'])
+
+        text_width = text_right - text_left
+        text_height = text_bottom - text_top
+
+        # Update x,y to be the actual center of the text bounds
+        x = int((text_left + text_right) / 2)
+        y = int((text_top + text_bottom) / 2)
+    else:
+        # Fallback to estimates
+        text_height = 30
+        text_width = len(measurement.get('text', '')) * 15
+
+    # Add padding for image skew or misalignment
+    padding = 10
+    text_height_with_padding = text_height + padding
+    text_width_with_padding = text_width + padding
+
+    # Create ROIs for horizontal and vertical line detection
+    # For horizontal lines: Look LEFT and RIGHT of the text
+    h_strip_extension = int(text_width * 1.5)
+
+    # Left horizontal ROI
+    h_left_x1 = max(0, int(x - text_width//2 - h_strip_extension))
+    h_left_x2 = int(x - text_width//2 - 5)
+    h_left_y1 = int(y - text_height//2)
+    h_left_y2 = int(y + text_height//2)
+
+    # Right horizontal ROI
+    h_right_x1 = int(x + text_width//2 + 5)
+    h_right_x2 = min(image.shape[1], int(x + text_width//2 + h_strip_extension))
+    h_right_y1 = h_left_y1
+    h_right_y2 = h_left_y2
+
+    # For vertical lines: Look ABOVE and BELOW the text
+    # Make ROIs TALLER and NARROWER for better vertical line detection
+    v_strip_extension = int(text_height * 4)  # Increased from 2x to 4x height for taller ROI
+
+    # Make the width smaller - just slightly wider than text
+    v_width_reduction = int(text_width * 0.3)  # Reduce width by 30%
+
+    # Top vertical ROI - taller and narrower
+    v_top_x1 = int(x - text_width//2 + v_width_reduction)
+    v_top_x2 = int(x + text_width//2 - v_width_reduction)
+    v_top_y1 = max(0, int(y - text_height//2 - v_strip_extension))
+    v_top_y2 = int(y - text_height//2 - 5)
+
+    # Bottom vertical ROI - taller and narrower
+    v_bottom_x1 = v_top_x1
+    v_bottom_x2 = v_top_x2
+    v_bottom_y1 = int(y + text_height//2 + 5)
+    v_bottom_y2 = min(image.shape[0], int(y + text_height//2 + v_strip_extension))
+
+    # Process horizontal and vertical ROIs separately
+    horizontal_lines = []
+    vertical_lines = []
+
+    # Helper function to detect lines in an ROI
+    def detect_lines_in_roi(roi_image, roi_x_offset, roi_y_offset):
+        if roi_image.size == 0:
+            return []
+
+        # Convert to grayscale and detect edges
+        gray = cv2.cvtColor(roi_image, cv2.COLOR_BGR2GRAY) if len(roi_image.shape) == 3 else roi_image
+        edges = cv2.Canny(gray, 30, 100)
+
+        # Find lines with HoughLinesP
+        lines = cv2.HoughLinesP(edges, 1, np.pi/180,
+                                threshold=15,
+                                minLineLength=20,
+                                maxLineGap=30)
+
+        # Convert line coordinates back to full image coordinates
+        if lines is not None:
+            adjusted_lines = []
+            for line in lines:
+                lx1, ly1, lx2, ly2 = line[0]
+                adjusted_lines.append([lx1 + roi_x_offset, ly1 + roi_y_offset,
+                                      lx2 + roi_x_offset, ly2 + roi_y_offset])
+            return adjusted_lines
+        return []
+
+    # Search for horizontal lines
+    if h_left_x2 > h_left_x1 and h_left_y2 > h_left_y1:
+        h_left_roi = image[h_left_y1:h_left_y2, h_left_x1:h_left_x2]
+        left_h_lines = detect_lines_in_roi(h_left_roi, h_left_x1, h_left_y1)
+        print(f"      Left H-ROI: shape={h_left_roi.shape}, found {len(left_h_lines)} lines")
+    else:
+        left_h_lines = []
+        print(f"      Left H-ROI: Invalid bounds")
+
+    if h_right_x2 > h_right_x1 and h_right_y2 > h_right_y1:
+        h_right_roi = image[h_right_y1:h_right_y2, h_right_x1:h_right_x2]
+        right_h_lines = detect_lines_in_roi(h_right_roi, h_right_x1, h_right_y1)
+        print(f"      Right H-ROI: shape={h_right_roi.shape}, found {len(right_h_lines)} lines")
+    else:
+        right_h_lines = []
+        print(f"      Right H-ROI: Invalid bounds")
+
+    # Filter for horizontal lines (more tolerant angles)
+    for line in left_h_lines + right_h_lines:
+        lx1, ly1, lx2, ly2 = line
+        angle = np.abs(np.degrees(np.arctan2(ly2 - ly1, lx2 - lx1)))
+        # More tolerant: 0-35° or 145-180° for "generally horizontal"
+        if angle < 35 or angle > 145:
+            horizontal_lines.append({
+                'coords': (lx1, ly1, lx2, ly2),
+                'distance': abs(y - (ly1 + ly2) / 2),
+                'type': 'horizontal_line'
+            })
+
+    if horizontal_lines:
+        print(f"      Found {len(horizontal_lines)} horizontal line candidates")
+
+    # Search for vertical lines
+    if v_top_x2 > v_top_x1 and v_top_y2 > v_top_y1:
+        v_top_roi = image[v_top_y1:v_top_y2, v_top_x1:v_top_x2]
+        top_v_lines = detect_lines_in_roi(v_top_roi, v_top_x1, v_top_y1)
+        print(f"      Top V-ROI: shape={v_top_roi.shape}, found {len(top_v_lines)} lines")
+    else:
+        top_v_lines = []
+        print(f"      Top V-ROI: Invalid bounds")
+
+    if v_bottom_x2 > v_bottom_x1 and v_bottom_y2 > v_bottom_y1:
+        v_bottom_roi = image[v_bottom_y1:v_bottom_y2, v_bottom_x1:v_bottom_x2]
+        bottom_v_lines = detect_lines_in_roi(v_bottom_roi, v_bottom_x1, v_bottom_y1)
+        print(f"      Bottom V-ROI: shape={v_bottom_roi.shape}, found {len(bottom_v_lines)} lines")
+    else:
+        bottom_v_lines = []
+        print(f"      Bottom V-ROI: Invalid bounds")
+
+    # Filter for vertical lines (more tolerant angles)
+    for line in top_v_lines + bottom_v_lines:
+        lx1, ly1, lx2, ly2 = line
+        angle = np.abs(np.degrees(np.arctan2(ly2 - ly1, lx2 - lx1)))
+        # More tolerant: 55-125° for "generally vertical"
+        if 55 < angle < 125:
+            x_distance = abs(x - (lx1 + lx2) / 2)
+            # Keep the distance check but make it less strict
+            if x_distance > 2:  # Reduced from 5 to 2
+                vertical_lines.append({
+                    'coords': (lx1, ly1, lx2, ly2),
+                    'distance': x_distance,
+                    'type': 'vertical_line'
+                })
+
+    if vertical_lines:
+        print(f"      Found {len(vertical_lines)} vertical line candidates")
+
+    # NEW LOGIC: Sequential check requiring HORIZONTAL lines on BOTH sides for WIDTH,
+    # or VERTICAL lines on BOTH sides for HEIGHT
+
+    # Step 1: Check for WIDTH - must have HORIZONTAL lines on BOTH left AND right
+    # horizontal_lines already contains only horizontal lines (angle filtered)
+    # Check which side of the text center each horizontal line is on
+    left_h_lines = [l for l in horizontal_lines if l['coords'][0] < x and l['coords'][2] < x]  # Both endpoints left of center
+    right_h_lines = [l for l in horizontal_lines if l['coords'][0] > x and l['coords'][2] > x]  # Both endpoints right of center
+
+    has_left_horizontal = len(left_h_lines) > 0
+    has_right_horizontal = len(right_h_lines) > 0
+
+    if has_left_horizontal and has_right_horizontal:
+        # Found HORIZONTAL lines on BOTH left and right - classify as WIDTH and stop
+        best_h = min(horizontal_lines, key=lambda l: l['distance'])
+        print(f"      Found HORIZONTAL lines on BOTH left and right → WIDTH")
+        return {
+            'line': best_h['coords'],
+            'orientation': 'horizontal_line',
+            'distance': best_h['distance']
+        }
+
+    # Step 2: If not WIDTH, check for HEIGHT - must have VERTICAL lines on BOTH top AND bottom
+    # vertical_lines already contains only vertical lines (angle filtered)
+    # Check which side of the text center each vertical line is on
+    top_v_lines = [l for l in vertical_lines if l['coords'][1] < y and l['coords'][3] < y]  # Both endpoints above center
+    bottom_v_lines = [l for l in vertical_lines if l['coords'][1] > y and l['coords'][3] > y]  # Both endpoints below center
+
+    has_top_vertical = len(top_v_lines) > 0
+    has_bottom_vertical = len(bottom_v_lines) > 0
+
+    if has_top_vertical and has_bottom_vertical:
+        # Found VERTICAL lines on BOTH top and bottom - classify as HEIGHT
+        best_v = min(vertical_lines, key=lambda l: l['distance'])
+        print(f"      Found VERTICAL lines on BOTH top and bottom → HEIGHT")
+        return {
+            'line': best_v['coords'],
+            'orientation': 'vertical_line',
+            'distance': best_v['distance']
+        }
+
+    # Step 3: Neither condition met - UNCLASSIFIED
+    print(f"      No lines on both sides (L-horiz:{has_left_horizontal} R-horiz:{has_right_horizontal} T-vert:{has_top_vertical} B-vert:{has_bottom_vertical}) → UNCLASSIFIED")
+    return None
+
+def classify_measurements_by_lines(image, measurements):
+    """Classify measurements as WIDTH, HEIGHT, or UNCLASSIFIED based on nearby dimension lines"""
+    classified = {
+        'width': [],
+        'height': [],
+        'unclassified': []
+    }
+
+    measurement_categories = []
+
+    for i, meas in enumerate(measurements):
+        print(f"\n  Analyzing measurement {i+1}: '{meas['text']}' at ({meas['position'][0]:.0f}, {meas['position'][1]:.0f})")
+
+        # Find lines near this measurement
+        line_info = find_lines_near_measurement(image, meas)
+
+        if line_info:
+            print(f"    Found {line_info['orientation']} at distance {line_info['distance']:.1f} pixels")
+            # Horizontal line = WIDTH measurement
+            # Vertical line = HEIGHT measurement
+            if line_info['orientation'] == 'horizontal_line':
+                classified['width'].append(meas['text'])
+                measurement_categories.append('width')
+                print(f"    → Classified as WIDTH")
+            elif line_info['orientation'] == 'vertical_line':
+                classified['height'].append(meas['text'])
+                measurement_categories.append('height')
+                print(f"    → Classified as HEIGHT")
+        else:
+            print(f"    No dimension lines found nearby")
+            classified['unclassified'].append(meas['text'])
+            measurement_categories.append('unclassified')
+            print(f"    → Classified as UNCLASSIFIED")
+
+    return classified, measurement_categories
+
+def create_visualization(image_path, groups, measurement_texts, measurement_logic=None, save_viz=True, opencv_regions=None, measurement_categories=None, measurements_list=None, show_rois=True):
     """Create visualization showing groups and measurements side by side"""
 
     # Colors for different groups (BGR format)
@@ -1194,9 +1500,121 @@ def create_visualization(image_path, groups, measurements, measurement_logic=Non
     vis_image = image.copy()
     h, w = image.shape[:2]
 
-    # Draw groups with different colors
+    # Draw ROIs for each measurement if we have measurements list
+    if show_rois and measurements_list and len(measurements_list) > 0:
+        for i, meas in enumerate(measurements_list[:len(groups)]):  # Match measurements to groups
+            if i >= len(groups):
+                break
+
+            # Get measurement position and bounds
+            x = int(meas['position'][0])
+            y = int(meas['position'][1])
+
+            # Get bounds for text size estimation
+            if 'bounds' in meas:
+                bounds = meas['bounds']
+                text_width = int(bounds['right'] - bounds['left'])
+                text_height = int(bounds['bottom'] - bounds['top'])
+            else:
+                # Estimate
+                text_height = 30
+                text_width = len(meas.get('text', '')) * 15
+
+            # Calculate ROIs same as in find_lines_near_measurement
+            # Horizontal ROIs (for WIDTH detection)
+            h_strip_extension = int(text_width * 1.5)
+
+            h_left_x1 = max(0, int(x - text_width//2 - h_strip_extension))
+            h_left_x2 = int(x - text_width//2 - 5)
+            h_left_y1 = int(y - text_height//2)
+            h_left_y2 = int(y + text_height//2)
+
+            h_right_x1 = int(x + text_width//2 + 5)
+            h_right_x2 = min(w, int(x + text_width//2 + h_strip_extension))
+            h_right_y1 = h_left_y1
+            h_right_y2 = h_left_y2
+
+            # Vertical ROIs (for HEIGHT detection)
+            v_strip_extension = int(text_height * 4)  # Using the taller setting
+            v_width_reduction = int(text_width * 0.3)  # Using the narrower setting
+
+            v_top_x1 = int(x - text_width//2 + v_width_reduction)
+            v_top_x2 = int(x + text_width//2 - v_width_reduction)
+            v_top_y1 = max(0, int(y - text_height//2 - v_strip_extension))
+            v_top_y2 = int(y - text_height//2 - 5)
+
+            v_bottom_x1 = v_top_x1
+            v_bottom_x2 = v_top_x2
+            v_bottom_y1 = int(y + text_height//2 + 5)
+            v_bottom_y2 = min(h, int(y + text_height//2 + v_strip_extension))
+
+            # Draw horizontal ROIs with dotted rectangles (for WIDTH detection) - RED
+            # Left horizontal ROI
+            if h_left_x2 > h_left_x1 and h_left_y2 > h_left_y1:
+                # Draw dotted rectangle manually
+                for px in range(h_left_x1, h_left_x2, 8):  # Dotted line on top and bottom
+                    cv2.line(vis_image, (px, h_left_y1), (min(px+4, h_left_x2), h_left_y1), (0, 0, 200), 1)
+                    cv2.line(vis_image, (px, h_left_y2), (min(px+4, h_left_x2), h_left_y2), (0, 0, 200), 1)
+                for py in range(h_left_y1, h_left_y2, 8):  # Dotted line on sides
+                    cv2.line(vis_image, (h_left_x1, py), (h_left_x1, min(py+4, h_left_y2)), (0, 0, 200), 1)
+                    cv2.line(vis_image, (h_left_x2, py), (h_left_x2, min(py+4, h_left_y2)), (0, 0, 200), 1)
+                # Label
+                cv2.putText(vis_image, "W", (h_left_x1+2, h_left_y1-2),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.3, (0, 0, 200), 1)
+
+            # Right horizontal ROI
+            if h_right_x2 > h_right_x1 and h_right_y2 > h_right_y1:
+                for px in range(h_right_x1, h_right_x2, 8):
+                    cv2.line(vis_image, (px, h_right_y1), (min(px+4, h_right_x2), h_right_y1), (0, 0, 200), 1)
+                    cv2.line(vis_image, (px, h_right_y2), (min(px+4, h_right_x2), h_right_y2), (0, 0, 200), 1)
+                for py in range(h_right_y1, h_right_y2, 8):
+                    cv2.line(vis_image, (h_right_x1, py), (h_right_x1, min(py+4, h_right_y2)), (0, 0, 200), 1)
+                    cv2.line(vis_image, (h_right_x2, py), (h_right_x2, min(py+4, h_right_y2)), (0, 0, 200), 1)
+                cv2.putText(vis_image, "W", (h_right_x2-10, h_right_y1-2),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.3, (0, 0, 200), 1)
+
+            # Draw vertical ROIs with dotted rectangles (for HEIGHT detection) - BLUE
+            # Top vertical ROI
+            if v_top_x2 > v_top_x1 and v_top_y2 > v_top_y1:
+                for px in range(v_top_x1, v_top_x2, 8):
+                    cv2.line(vis_image, (px, v_top_y1), (min(px+4, v_top_x2), v_top_y1), (200, 0, 0), 1)
+                    cv2.line(vis_image, (px, v_top_y2), (min(px+4, v_top_x2), v_top_y2), (200, 0, 0), 1)
+                for py in range(v_top_y1, v_top_y2, 8):
+                    cv2.line(vis_image, (v_top_x1, py), (v_top_x1, min(py+4, v_top_y2)), (200, 0, 0), 1)
+                    cv2.line(vis_image, (v_top_x2, py), (v_top_x2, min(py+4, v_top_y2)), (200, 0, 0), 1)
+                cv2.putText(vis_image, "H", (v_top_x1+2, v_top_y1+10),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.3, (200, 0, 0), 1)
+
+            # Bottom vertical ROI
+            if v_bottom_x2 > v_bottom_x1 and v_bottom_y2 > v_bottom_y1:
+                for px in range(v_bottom_x1, v_bottom_x2, 8):
+                    cv2.line(vis_image, (px, v_bottom_y1), (min(px+4, v_bottom_x2), v_bottom_y1), (200, 0, 0), 1)
+                    cv2.line(vis_image, (px, v_bottom_y2), (min(px+4, v_bottom_x2), v_bottom_y2), (200, 0, 0), 1)
+                for py in range(v_bottom_y1, v_bottom_y2, 8):
+                    cv2.line(vis_image, (v_bottom_x1, py), (v_bottom_x1, min(py+4, v_bottom_y2)), (200, 0, 0), 1)
+                    cv2.line(vis_image, (v_bottom_x2, py), (v_bottom_x2, min(py+4, v_bottom_y2)), (200, 0, 0), 1)
+                cv2.putText(vis_image, "H", (v_bottom_x1+2, v_bottom_y2-5),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.3, (200, 0, 0), 1)
+
+    # Draw groups with different colors (or category colors if available)
     for i, group in enumerate(groups):
-        color = COLORS[i % len(COLORS)]
+        # Determine color based on category if available
+        if measurement_categories and i < len(measurement_categories):
+            category = measurement_categories[i]
+            if category == 'width':
+                color = (0, 0, 255)  # Red for WIDTH
+                label_suffix = " [WIDTH]"
+            elif category == 'height':
+                color = (255, 0, 0)  # Blue for HEIGHT
+                label_suffix = " [HEIGHT]"
+            else:
+                color = (128, 128, 128)  # Gray for UNCLASSIFIED
+                label_suffix = " [UNCLASS]"
+        else:
+            # Fall back to cycling colors if no categories
+            color = COLORS[i % len(COLORS)]
+            label_suffix = ""
+
         bounds = group['bounds']
         texts = group.get('texts', [])
 
@@ -1208,8 +1626,8 @@ def create_visualization(image_path, groups, measurements, measurement_logic=Non
 
         cv2.rectangle(vis_image, (left - 5, top - 5), (right + 5, bottom + 5), color, 3)
 
-        # Draw group number
-        group_label = f"G{i+1}"
+        # Draw group number with category
+        group_label = f"G{i+1}{label_suffix}"
         label_x = max(10, left - 35)
         label_y = max(30, top - 10)
         cv2.putText(vis_image, group_label, (label_x, label_y),
@@ -1305,25 +1723,54 @@ def create_visualization(image_path, groups, measurements, measurement_logic=Non
                (x_pos, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 1)
     y_pos += 25
 
-    # Add legend for rectangles
+    # Add legend for rectangles and colors
     cv2.putText(vis_image, "Solid box = Phase 1 group | Dashed box = Phase 2 zoom region",
                (x_pos, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (180, 180, 180), 1)
-    y_pos += 30
+    y_pos += 20
+
+    # Add color legend if categories are available
+    if measurement_categories:
+        cv2.putText(vis_image, "Colors: ", (x_pos, y_pos),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (180, 180, 180), 1)
+        cv2.putText(vis_image, "RED=Width", (x_pos + 50, y_pos),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+        cv2.putText(vis_image, "BLUE=Height", (x_pos + 140, y_pos),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
+        cv2.putText(vis_image, "GRAY=Unclassified", (x_pos + 240, y_pos),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (128, 128, 128), 1)
+        y_pos += 25
+    else:
+        y_pos += 10
 
     # Add group info and measurements - on two lines
     for i, group in enumerate(groups):
         if y_pos > panel_y + panel_height - 60:
             break
 
-        color = COLORS[i % len(COLORS)]
+        # Get color based on category
+        if measurement_categories and i < len(measurement_categories):
+            category = measurement_categories[i]
+            if category == 'width':
+                color = (0, 0, 255)  # Red
+                cat_label = "[WIDTH]"
+            elif category == 'height':
+                color = (255, 0, 0)  # Blue
+                cat_label = "[HEIGHT]"
+            else:
+                color = (128, 128, 128)  # Gray
+                cat_label = "[UNCLASS]"
+        else:
+            color = COLORS[i % len(COLORS)]
+            cat_label = ""
+
         texts = group.get('texts', [])
 
         # First line: Group and measurement
-        group_text = f"G{i+1}: {' + '.join(texts[:3])}"
+        group_text = f"G{i+1}{cat_label}: {' + '.join(texts[:3])}"
         if len(texts) > 3:
             group_text += "..."
 
-        # Draw group part in group color
+        # Draw group part in appropriate color
         cv2.putText(vis_image, group_text, (x_pos, y_pos),
                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
 
@@ -1337,8 +1784,8 @@ def create_visualization(image_path, groups, measurements, measurement_logic=Non
 
         # Draw measurement in bold black
         meas_x = arrow_x + 40
-        if i < len(measurements):
-            meas_value = measurements[i] if measurements[i] else 'NONE'
+        if i < len(measurement_texts):
+            meas_value = measurement_texts[i] if measurement_texts[i] else 'NONE'
 
             # Draw measurement text in bold white
             cv2.putText(vis_image, meas_value, (meas_x, y_pos),
@@ -1355,12 +1802,29 @@ def create_visualization(image_path, groups, measurements, measurement_logic=Non
             y_pos += 30  # Less space if no logic line
 
     # Add summary at bottom of panel
-    y_pos = panel_y + panel_height - 45
+    y_pos = panel_y + panel_height - 70  # More room for category counts
     cv2.line(vis_image, (x_pos, y_pos - 5), (panel_x + panel_width - 10, y_pos - 5), (200, 200, 200), 1)
+
+    # Show total groups and measurements
     cv2.putText(vis_image, f"Total Groups: {len(groups)}", (x_pos, y_pos),
                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+
+    # Show category counts if available
+    if measurement_categories:
+        width_count = sum(1 for cat in measurement_categories if cat == 'width')
+        height_count = sum(1 for cat in measurement_categories if cat == 'height')
+        unclass_count = sum(1 for cat in measurement_categories if cat == 'unclassified')
+
+        cv2.putText(vis_image, f"W:{width_count}", (x_pos + 180, y_pos),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+        cv2.putText(vis_image, f"H:{height_count}", (x_pos + 260, y_pos),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
+        if unclass_count > 0:
+            cv2.putText(vis_image, f"?:{unclass_count}", (x_pos + 340, y_pos),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (128, 128, 128), 2)
+
     y_pos += 25
-    cv2.putText(vis_image, f"Measurements Found: {len([m for m in measurements if m])}", (x_pos, y_pos),
+    cv2.putText(vis_image, f"Measurements Found: {len([m for m in measurement_texts if m])}", (x_pos, y_pos),
                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
     # No need to combine images since panel is overlaid
@@ -1376,12 +1840,14 @@ def create_visualization(image_path, groups, measurements, measurement_logic=Non
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: python measurement_detector_test.py <image_path> [--viz]")
-        print("  --viz : Create visualization showing groups and measurements")
+        print("Usage: python measurement_detector_test.py <image_path> [--viz] [--debug]")
+        print("  --viz   : Create visualization showing groups and measurements")
+        print("  --debug : Save debug images showing zoom regions and OCR preprocessing")
         sys.exit(1)
 
     image_path = sys.argv[1]
     create_viz = '--viz' in sys.argv
+    save_debug = '--debug' in sys.argv or '--save-debug' in sys.argv
 
     api_key = os.environ.get('GOOGLE_VISION_API_KEY')
 
@@ -1412,7 +1878,7 @@ def main():
 
         print(f"\n{i+1}. Center ({center[0]:.0f}, {center[1]:.0f}), texts: {' '.join(texts[:3])}...")
 
-        measurement, logic = verify_measurement_at_center_with_logic(image_path, center, bounds, texts, api_key, i+1)
+        measurement, logic = verify_measurement_at_center_with_logic(image_path, center, bounds, texts, api_key, i+1, save_debug=save_debug)
 
         if measurement:
             print(f"  → Measurement: '{measurement}'")
@@ -1427,6 +1893,35 @@ def main():
             print(f"  → No measurement found")
             measurement_texts.append(None)
             measurement_logic.append("")
+
+    # Phase 3: Categorize measurements
+    measurement_categories = None
+    classified = None
+    if measurements:
+        print("\n=== PHASE 3: Categorizing Measurements ===")
+        print("Finding dimension lines near each measurement...")
+
+        # Convert Windows network paths to Unix-style for OpenCV
+        img_path = image_path
+        if img_path.startswith('\\\\'):
+            img_path = img_path.replace('\\', '/')
+
+        # Load image for line detection
+        image = cv2.imread(img_path)
+        if image is not None:
+            classified, measurement_categories = classify_measurements_by_lines(image, measurements)
+
+            print(f"\nCategorization Results:")
+            print(f"  WIDTH measurements: {len(classified['width'])}")
+            for w in classified['width']:
+                print(f"    - {w}")
+            print(f"  HEIGHT measurements: {len(classified['height'])}")
+            for h in classified['height']:
+                print(f"    - {h}")
+            if classified['unclassified']:
+                print(f"  UNCLASSIFIED: {len(classified['unclassified'])}")
+                for u in classified['unclassified']:
+                    print(f"    - {u}")
 
     # Summary
     print("\n" + "=" * 80)
@@ -1443,13 +1938,33 @@ def main():
     counts = Counter(m['text'] for m in measurements)
 
     print(f"\nTOTAL MEASUREMENTS: {len(measurements)}")
+
+    # Show categorized counts if available
+    if classified:
+        print(f"  Widths: {len(classified['width'])}")
+        print(f"  Heights: {len(classified['height'])}")
+        print(f"  Unclassified: {len(classified['unclassified'])}")
+
     print("\nMeasurement Counts:")
     for meas, count in sorted(counts.items()):
-        print(f"  {count}x {meas}")
+        # Find category for this measurement
+        category = ""
+        if classified:
+            if meas in classified['width']:
+                category = " [WIDTH]"
+            elif meas in classified['height']:
+                category = " [HEIGHT]"
+            else:
+                category = " [UNCLASS]"
+        print(f"  {count}x {meas}{category}")
 
     # Create visualization if requested
     if create_viz:
-        create_visualization(image_path, merged_areas, measurement_texts, measurement_logic, save_viz=True, opencv_regions=opencv_regions)
+        # Pass the actual measurements list so ROIs can be drawn
+        create_visualization(image_path, merged_areas, measurement_texts, measurement_logic,
+                           save_viz=True, opencv_regions=opencv_regions,
+                           measurement_categories=measurement_categories,
+                           measurements_list=measurements)
 
 if __name__ == "__main__":
     main()
