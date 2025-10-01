@@ -1932,18 +1932,25 @@ def find_lines_near_measurement(image, measurement, save_roi_debug=False):
         # Store all horizontal lines for pairing logic (to extend lines and check for heights)
         measurement['h_lines'] = horizontal_lines
 
+        # Calculate average angle of horizontal lines for intersection calculation
+        if horizontal_lines:
+            avg_angle = sum(l['angle'] for l in horizontal_lines) / len(horizontal_lines)
+            measurement['h_line_angle'] = avg_angle
+
         if best_h:
             return {
                 'line': best_h['coords'],
                 'orientation': 'horizontal_line',
-                'distance': best_h['distance']
+                'distance': best_h['distance'],
+                'angle': best_h.get('angle', 0)
             }
         else:
             # Arrows detected but no actual lines - still classify as WIDTH
             return {
                 'line': None,
                 'orientation': 'horizontal_line',
-                'distance': 0
+                'distance': 0,
+                'angle': 0
             }
 
     # Step 2: If not WIDTH, check for HEIGHT
@@ -1965,10 +1972,17 @@ def find_lines_near_measurement(image, measurement, save_roi_debug=False):
         # Found VERTICAL lines on BOTH top and bottom - classify as HEIGHT
         best_v = min(vertical_lines, key=lambda l: l['distance'])
         print(f"      Found VERTICAL lines on BOTH top and bottom → HEIGHT")
+
+        # Calculate average angle of vertical lines for intersection calculation
+        if vertical_lines:
+            avg_angle = sum(l['angle'] for l in vertical_lines) / len(vertical_lines)
+            measurement['v_line_angle'] = avg_angle
+
         return {
             'line': best_v['coords'],
             'orientation': 'vertical_line',
-            'distance': best_v['distance']
+            'distance': best_v['distance'],
+            'angle': best_v.get('angle', 90)
         }
 
     # Step 2b: If no vertical lines on both sides, check for arrows as fallback
@@ -2150,14 +2164,16 @@ def pair_measurements_by_proximity(classified_measurements, all_measurements):
                     'text': meas['text'],
                     'x': meas['position'][0],
                     'y': meas['position'][1],
-                    'bounds': meas.get('bounds', None)
+                    'bounds': meas.get('bounds', None),
+                    'h_line_angle': meas.get('h_line_angle', 0)  # Store the horizontal line angle
                 })
             elif category == 'height':
                 height_data = {
                     'text': meas['text'],
                     'x': meas['position'][0],
                     'y': meas['position'][1],
-                    'bounds': meas.get('bounds', None)
+                    'bounds': meas.get('bounds', None),
+                    'v_line_angle': meas.get('v_line_angle', 90)  # Store the vertical line angle
                 }
                 if 'notation' in meas:
                     height_data['notation'] = meas['notation']
@@ -2225,7 +2241,9 @@ def pair_measurements_by_proximity(classified_measurements, all_measurements):
                     'height': height['text'],
                     'width_pos': (best_width['x'], best_width['y']),
                     'height_pos': (height['x'], height['y']),
-                    'distance': best_distance
+                    'distance': best_distance,
+                    'width_angle': best_width.get('h_line_angle', 0),  # Store width's h-line angle
+                    'height_angle': height.get('v_line_angle', 90)  # Store height's v-line angle
                 }
                 if 'notation' in height:
                     opening_data['notation'] = height['notation']
@@ -2366,7 +2384,9 @@ def pair_measurements_by_proximity(classified_measurements, all_measurements):
                     'height': best_height['text'],
                     'width_pos': (width['x'], width['y']),
                     'height_pos': (best_height['x'], best_height['y']),
-                    'distance': best_distance
+                    'distance': best_distance,
+                    'width_angle': width.get('h_line_angle', 0),  # Store width's h-line angle
+                    'height_angle': best_height.get('v_line_angle', 90)  # Store height's v-line angle
                 }
                 if 'notation' in best_height:
                     opening_data['notation'] = best_height['notation']
@@ -2481,20 +2501,15 @@ def pair_measurements_by_proximity(classified_measurements, all_measurements):
 
     print(f"\n  Total openings paired: {len(openings)}")
 
-    # Sort openings by Y position (top to bottom) for consistent numbering
-    # For side-by-side layouts, use height Y as primary sort key
-    # For stacked layouts, use the average Y position
+    # Sort openings by X position (left to right) then Y position (top to bottom) for consistent numbering
     if len(openings) > 0:
-        # Check if this is a side-by-side layout (single width, multiple heights)
-        unique_widths = len(set(o['width_pos'] for o in openings))
-        if unique_widths == 1:
-            # Side-by-side: sort primarily by height Y position
-            openings.sort(key=lambda o: o['height_pos'][1])
-            print("  Sorted by height Y position (side-by-side layout)")
-        else:
-            # Stacked or mixed: use average Y position
-            openings.sort(key=lambda o: (o['height_pos'][1] + o['width_pos'][1]) / 2)
-            print("  Sorted by average Y position (stacked/mixed layout)")
+        # Sort by X position (horizontal) first, then Y position (vertical) second
+        # Use average X and Y positions from width and height measurements
+        openings.sort(key=lambda o: (
+            (o['width_pos'][0] + o['height_pos'][0]) / 2,  # Average X position (primary - left to right)
+            (o['width_pos'][1] + o['height_pos'][1]) / 2   # Average Y position (secondary - top to bottom)
+        ))
+        print("  Sorted by X position (left to right), then Y position (top to bottom)")
 
     # Collect unpaired heights info for visualization
     unpaired_heights_info = []
@@ -2619,14 +2634,14 @@ def find_clear_position_for_marker(intersection_x, intersection_y, width_pos, he
 
     # Scan in expanding circles around the intersection point
     # Start with small movements, prioritizing upward movement
-    max_radius = 120
+    max_radius = 250  # Increased from 120 to allow more spread
 
     # First, try moving up pixel by pixel (prefer upward movement)
-    for offset in range(1, 50):  # Check every single pixel upward
+    for offset in range(1, 100):  # Increased from 50 to 100
         test_positions.append((intersection_x, intersection_y - offset))
 
     # Then try other directions pixel by pixel
-    for offset in range(1, 50):
+    for offset in range(1, 100):  # Increased from 50 to 100
         test_positions.extend([
             (intersection_x + offset, intersection_y),  # Right
             (intersection_x - offset, intersection_y),  # Left
@@ -3263,9 +3278,28 @@ def create_visualization(image_path, groups, measurement_texts, measurement_logi
             width_x, width_y = opening['width_pos']
             height_x, height_y = opening['height_pos']
 
-            # Calculate intersection point (width's X, height's Y)
+            # Calculate intersection point:
+            # Start from height position, travel parallel to width's H-lines toward width's X position
+            width_hline_angle = opening.get('width_angle', 0)
+
+            # Calculate horizontal distance to travel from height to width's X position
+            x_diff = width_x - height_x
+
+            # Use the width's H-line angle to calculate Y offset
+            # For a line at angle θ from horizontal: tan(θ) = y/x
+            # We travel parallel to the H-line from height position
+            angle_rad = np.radians(width_hline_angle)
+
+            # Calculate Y offset based on the H-line angle
+            # tan(angle) = opposite/adjacent = y_offset/x_diff
+            # y_offset = x_diff * tan(angle)
+            if np.abs(x_diff) > 0.01:  # Avoid near-zero horizontal distance
+                y_offset = x_diff * np.tan(angle_rad)
+            else:
+                y_offset = 0  # No horizontal movement
+
             intersection_x = int(width_x)
-            intersection_y = int(height_y)
+            intersection_y = int(height_y + y_offset)
 
             # Draw lines from intersection to measurements (thin lines)
             cv2.line(vis_image, (intersection_x, intersection_y),
@@ -3282,9 +3316,10 @@ def create_visualization(image_path, groups, measurement_texts, measurement_logi
             # Get text size for proper centering
             (text_width, text_height), baseline = cv2.getTextSize(text, font, font_scale, thickness)
 
-            # Calculate dynamic circle radius based on text size (with padding)
-            # Use text_width for horizontal text expansion, ensure minimum based on height
-            radius = max(text_width // 2 + 18, text_height // 2 + 18)
+            # Calculate dynamic circle radius based on text size (with proportional padding)
+            # Use 30% padding around the text for a balanced appearance
+            padding_factor = 1.30
+            radius = int(max(text_width, text_height) * padding_factor / 2)
 
             # Find clear position for marker that avoids overlapping text and other markers
             marker_x, marker_y = find_clear_position_for_marker(
@@ -3411,18 +3446,23 @@ def create_visualization(image_path, groups, measurement_texts, measurement_logi
                 opening_y = title_y + 35 + (i * 35)
                 color = opening_colors[i % len(opening_colors)]
 
-                # Draw small circle with number (increased size for better fit)
-                circle_center_x = legend_x + 25
-                circle_center_y = opening_y - 5
-                cv2.circle(vis_image, (circle_center_x, circle_center_y), 15, (255, 255, 255), -1)
-                cv2.circle(vis_image, (circle_center_x, circle_center_y), 15, color, 2)
-
-                # Center text in circle
+                # Calculate text size first for dynamic circle sizing
                 legend_text = f"#{start_opening_number + i}"
                 legend_font = cv2.FONT_HERSHEY_SIMPLEX
                 legend_font_scale = 0.5
                 legend_thickness = 2
                 (text_w, text_h), baseline = cv2.getTextSize(legend_text, legend_font, legend_font_scale, legend_thickness)
+
+                # Calculate dynamic radius based on text size (with proportional padding)
+                # Use 40% padding for legend (slightly tighter than main markers)
+                legend_padding_factor = 1.40
+                legend_radius = int(max(text_w, text_h) * legend_padding_factor / 2)
+
+                # Draw circle with number (dynamic size for better fit)
+                circle_center_x = legend_x + 25
+                circle_center_y = opening_y - 5
+                cv2.circle(vis_image, (circle_center_x, circle_center_y), legend_radius, (255, 255, 255), -1)
+                cv2.circle(vis_image, (circle_center_x, circle_center_y), legend_radius, color, 2)
                 text_x = circle_center_x - text_w // 2
                 text_y = circle_center_y + text_h // 2 - baseline // 2
 
