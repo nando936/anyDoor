@@ -1145,10 +1145,18 @@ def verify_measurement_at_center_with_logic(image_path, center, bounds, texts, a
             # Check if there's a fraction nearby
             has_nearby_fraction = False
             for other in individual_items:
+                # Check for complete fractions or fraction parts
                 if other['text'] in ['/2', '/4', '/8', '/16', '1/2', '1/4', '3/8', '5/8', '3/4', '7/8', '1/16', '3/16', '5/16', '7/16', '9/16', '11/16', '13/16', '15/16']:
                     x_dist = abs(other['x'] - item['x'])
                     y_dist = abs(other['y'] - item['y'])
                     # Check if fraction is nearby (within grouping distance)
+                    if x_dist < x_threshold and y_dist < y_threshold:
+                        has_nearby_fraction = True
+                        break
+                # Also check for standalone "/" which indicates the "1" is part of a fraction
+                if other['text'] == '/':
+                    x_dist = abs(other['x'] - item['x'])
+                    y_dist = abs(other['y'] - item['y'])
                     if x_dist < x_threshold and y_dist < y_threshold:
                         has_nearby_fraction = True
                         break
@@ -1162,6 +1170,34 @@ def verify_measurement_at_center_with_logic(image_path, center, bounds, texts, a
         filtered_items.append(item)
 
     individual_items = filtered_items
+
+    # Remove duplicate numbers that are very close together (OCR duplicates)
+    deduplicated_items = []
+    skip_indices = set()
+
+    for i, item in enumerate(individual_items):
+        if i in skip_indices:
+            continue
+
+        # Check for duplicates (same text, nearby position)
+        for j, other in enumerate(individual_items):
+            if j <= i or j in skip_indices:
+                continue
+
+            # If same text and within reasonable distance, likely a duplicate
+            if item['text'] == other['text']:
+                x_dist = abs(other['x'] - item['x'])
+                y_dist = abs(other['y'] - item['y'])
+                # Increased threshold to 100 pixels to catch duplicates on different lines
+                # (like "-14" on one line and "14 1/4" on the next)
+                if x_dist < 100 and y_dist < 100:
+                    # Keep the first occurrence, skip the duplicate
+                    skip_indices.add(j)
+                    print(f"    Filtered out duplicate '{other['text']}' at ({other['x']:.0f}, {other['y']:.0f}) - duplicate of ({item['x']:.0f}, {item['y']:.0f})")
+
+        deduplicated_items.append(item)
+
+    individual_items = deduplicated_items
 
     measurement_groups = []
     used_indices = set()
@@ -2503,13 +2539,13 @@ def pair_measurements_by_proximity(classified_measurements, all_measurements):
 
     # Sort openings by X position (left to right) then Y position (top to bottom) for consistent numbering
     if len(openings) > 0:
-        # Sort by X position (horizontal) first, then Y position (vertical) second
+        # Sort by Y position (vertical) first (top to bottom), then X position (horizontal) second (left to right)
         # Use average X and Y positions from width and height measurements
         openings.sort(key=lambda o: (
-            (o['width_pos'][0] + o['height_pos'][0]) / 2,  # Average X position (primary - left to right)
-            (o['width_pos'][1] + o['height_pos'][1]) / 2   # Average Y position (secondary - top to bottom)
+            (o['width_pos'][1] + o['height_pos'][1]) / 2,  # Average Y position (primary - top to bottom)
+            (o['width_pos'][0] + o['height_pos'][0]) / 2   # Average X position (secondary - left to right)
         ))
-        print("  Sorted by X position (left to right), then Y position (top to bottom)")
+        print("  Sorted by Y position (top to bottom), then X position (left to right)")
 
     # Collect unpaired heights info for visualization
     unpaired_heights_info = []
