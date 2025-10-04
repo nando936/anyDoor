@@ -373,12 +373,30 @@ def create_visualization(
                  (panel_x + panel_width - 10, panel_y + panel_height - 20), (200, 200, 200), 1)
 
     # Draw classification labels on measurements when classification is enabled
+    with open('//vmware-host/Shared Folders/D/OneDrive/customers/raised panel/Measures-2025-09-09(14-18)/all_pages/viz_debug.txt', 'a') as f:
+        f.write(f"show_classification={show_classification}, measurement_categories={'exists' if measurement_categories else 'None'}, measurements_list={'exists' if measurements_list else 'None'}\n")
+        if measurement_categories:
+            f.write(f"  len(measurement_categories)={len(measurement_categories)}\n")
+        if measurements_list:
+            f.write(f"  len(measurements_list)={len(measurements_list)}\n")
+
     if show_classification and measurement_categories and measurements_list:
+        # Track if we've drawn the first width extent line
+        first_width_drawn = False
+
         for i, (meas, category) in enumerate(zip(measurements_list, measurement_categories)):
             if i >= len(measurement_categories):
                 break
 
             x, y = int(meas['position'][0]), int(meas['position'][1])
+            print(f"[VIZ-LOOP] M{i+1} ({meas.get('text')}): cat={category}, has_width_extent={'width_extent' in meas}")
+            # Debug to file
+            with open('//vmware-host/Shared Folders/D/OneDrive/customers/raised panel/Measures-2025-09-09(14-18)/all_pages/viz_debug.txt', 'a') as f:
+                f.write(f"M{i+1} ({meas.get('text')}): cat={category}, has_width_extent={'width_extent' in meas}")
+                if 'width_extent' in meas:
+                    f.write(f", has_debug_rois={'debug_rois' in meas['width_extent']}\n")
+                else:
+                    f.write("\n")
 
             # DEBUG: Draw OCR text with box below the actual text for comparison
             # DISABLED by default - set SHOW_DEBUG_TEXT_BOXES = True to enable
@@ -504,32 +522,193 @@ def create_visualization(
             cv2.putText(vis_image, label, best_pos,
                        font, font_scale, color, thickness)
 
+            # Draw extent lines ONLY for bottom width measurements (those with drawer_config)
+            if category == 'width' and 'width_extent' in meas and 'drawer_config' in meas:
+                extent = meas['width_extent']
+                print(f"[VIZ] M{i+1} has width_extent, debug_rois present: {'debug_rois' in extent}")
+                left_x = int(extent['left'])
+                right_x = int(extent['right'])
+                # Use actual Y coordinates if available, otherwise use measurement Y
+                left_y = int(extent.get('left_y', y))
+                right_y = int(extent.get('right_y', y))
+
+                # Draw extended ROI rectangles (debug visualization) - DISABLED
+                # if 'debug_rois' in extent:
+                #     rois = extent['debug_rois']
+                #     # Draw left ROI in magenta (bright pink)
+                #     lx1, ly1, lx2, ly2 = rois['left']
+                #     cv2.rectangle(vis_image, (lx1, ly1), (lx2, ly2), (255, 0, 255), 3)
+                #     # Draw right ROI in orange
+                #     rx1, ry1, rx2, ry2 = rois['right']
+                #     cv2.rectangle(vis_image, (rx1, ry1), (rx2, ry2), (0, 165, 255), 3)
+
+                # Draw thick RED line at the actual angle of the H-lines
+                cv2.line(vis_image, (left_x, left_y), (right_x, right_y), (0, 0, 255), 5)
+
+                # Draw RED tick marks perpendicular to the line angle
+                angle = extent.get('angle', 0)
+                angle_rad = np.radians(angle)
+                # Perpendicular angle is 90 degrees offset
+                perp_angle = angle_rad + np.pi/2
+                tick_len = 15
+
+                # Left tick mark
+                tick_dx = int(tick_len * np.cos(perp_angle))
+                tick_dy = int(tick_len * np.sin(perp_angle))
+                cv2.line(vis_image,
+                        (left_x - tick_dx, left_y - tick_dy),
+                        (left_x + tick_dx, left_y + tick_dy),
+                        (0, 0, 255), 5)
+
+                # Right tick mark
+                cv2.line(vis_image,
+                        (right_x - tick_dx, right_y - tick_dy),
+                        (right_x + tick_dx, right_y + tick_dy),
+                        (0, 0, 255), 5)
+
+                # Add label showing measurement number and span
+                label_text = f"M{i+1} ({int(extent['span'])}px) {angle:.1f}°"
+                cv2.putText(vis_image, label_text, (left_x - 50, left_y - 25),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+                print(f"[VIZ DEBUG] Drew extent line for M{i+1} ({meas['text']}) at angle={angle:.1f}°, left=({left_x},{left_y}), right=({right_x},{right_y}), span={extent['span']}")
+
+                # Draw drawer configuration label and scan ROI if available
+                if 'drawer_config' in meas:
+                    drawer_text = meas['drawer_config']
+
+                    # Determine scan height and text position based on position class
+                    position_class = 'bottom'  # default
+
+                    # Extract position class from drawer_text
+                    if 'top width' in drawer_text:
+                        position_class = 'top'
+                        scan_distance_px = 60  # 5/8" at 96 DPI (base height for top widths)
+                        # Top widths: place text 1" ABOVE the width line (96px at 96 DPI)
+                        text_y = left_y - 96
+                    else:
+                        position_class = 'bottom'
+                        # Bottom widths: scan up to where top widths are + 1"
+                        # Find the Y position of top widths in the measurements list
+                        top_width_y = None
+                        if measurements_list:
+                            for other_meas in measurements_list:
+                                if 'drawer_config' in other_meas:
+                                    other_text = other_meas['drawer_config']
+                                    if 'top width' in other_text:
+                                        # Get the Y position of this top width from width_extent
+                                        if 'width_extent' in other_meas:
+                                            other_left_y = other_meas['width_extent'].get('left_y', None)
+                                            if other_left_y is not None:
+                                                if top_width_y is None or other_left_y < top_width_y:
+                                                    top_width_y = other_left_y
+
+                        # If we found a top width, scan to it + 1", otherwise use default
+                        if top_width_y is not None:
+                            # Distance from current bottom width to top width + 1"
+                            scan_distance_px = abs(left_y - top_width_y) + 96  # +1" (96px)
+                        else:
+                            scan_distance_px = 60  # Default if no top width found
+
+                        # Bottom widths: place text 3/4" BELOW the width line (72px at 96 DPI)
+                        text_y = left_y + 72
+
+                    # Draw text at appropriate position
+                    cv2.putText(vis_image, drawer_text, (left_x - 50, text_y),
+                               cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 255), 2)
+
+                    # Calculate scan ROI bounds following the angle of the dimension line
+                    # Bottom edge parallel to dimension line, sides perpendicular to it
+                    offset_from_width = 12  # 1/8 inch at 96 DPI (bottom edge starts here)
+                    additional_height = 96  # 1 inch at 96 DPI (extend above top widths)
+                    horizontal_extension = 24  # 1/4 inch at 96 DPI (extend left and right)
+
+                    # Get the angle of the dimension line
+                    angle_rad = np.radians(angle)
+
+                    # Calculate direction along the dimension line (for horizontal extension)
+                    line_dx = np.cos(angle_rad)
+                    line_dy = np.sin(angle_rad)
+
+                    # Calculate perpendicular direction (upward from the line)
+                    perp_angle = angle_rad + np.pi/2
+                    perp_dx = np.cos(perp_angle)
+                    perp_dy = np.sin(perp_angle)
+
+                    # Ensure perpendicular points upward (negative Y)
+                    if perp_dy > 0:
+                        perp_dx = -perp_dx
+                        perp_dy = -perp_dy
+
+                    # Extend the dimension line endpoints by 1/4" on each side
+                    extended_left_x = left_x - int(horizontal_extension * line_dx)
+                    extended_left_y = left_y - int(horizontal_extension * line_dy)
+                    extended_right_x = right_x + int(horizontal_extension * line_dx)
+                    extended_right_y = right_y + int(horizontal_extension * line_dy)
+
+                    # Bottom edge: starts 1/8" above extended dimension line, parallel to it
+                    # First move perpendicular from the extended dimension line endpoints
+                    bottom_left_x = extended_left_x + int(offset_from_width * perp_dx)
+                    bottom_left_y = extended_left_y + int(offset_from_width * perp_dy)
+                    bottom_right_x = extended_right_x + int(offset_from_width * perp_dx)
+                    bottom_right_y = extended_right_y + int(offset_from_width * perp_dy)
+
+                    # Top edge: scan_distance_px further in perpendicular direction
+                    # For top widths, add additional_height; for bottom widths, it's already included in scan_distance_px
+                    # Move perpendicular from bottom edge
+                    if position_class == 'top':
+                        total_height = scan_distance_px + additional_height
+                    else:
+                        total_height = scan_distance_px  # Already includes the +1" for bottom widths
+
+                    top_left_x = bottom_left_x + int(total_height * perp_dx)
+                    top_left_y = bottom_left_y + int(total_height * perp_dy)
+                    top_right_x = bottom_right_x + int(total_height * perp_dx)
+                    top_right_y = bottom_right_y + int(total_height * perp_dy)
+
+                    # Draw scan ROI as a rotated rectangle in cyan (light blue)
+                    scan_roi_pts = np.array([
+                        [bottom_left_x, bottom_left_y],
+                        [bottom_right_x, bottom_right_y],
+                        [top_right_x, top_right_y],
+                        [top_left_x, top_left_y]
+                    ], np.int32)
+                    cv2.polylines(vis_image, [scan_roi_pts], isClosed=True,
+                                 color=(255, 255, 0), thickness=2)  # Cyan color
+
+                    # Draw detected horizontal edges in yellow
+                    if 'edge_viz_data' in meas:
+                        edge_data = meas['edge_viz_data']
+                        if 'horizontal_edges' in edge_data:
+                            for x1, y1, x2, y2 in edge_data['horizontal_edges']:
+                                cv2.line(vis_image, (x1, y1), (x2, y2), (0, 255, 255), 2)  # Yellow color
+
             # Draw measurement number in a square box
-            meas_num = str(i + 1)
-            meas_font = cv2.FONT_HERSHEY_SIMPLEX
-            meas_font_scale = 0.5
-            meas_thickness = 1
-            (meas_text_w, meas_text_h), meas_baseline = cv2.getTextSize(meas_num, meas_font, meas_font_scale, meas_thickness)
+            if True:
+                meas_num = str(i + 1)
+                meas_font = cv2.FONT_HERSHEY_SIMPLEX
+                meas_font_scale = 0.5
+                meas_thickness = 1
+                (meas_text_w, meas_text_h), meas_baseline = cv2.getTextSize(meas_num, meas_font, meas_font_scale, meas_thickness)
 
-            # Create square box (use max of width/height for square)
-            box_size = max(meas_text_w, meas_text_h) + 8
+                # Create square box (use max of width/height for square)
+                box_size = max(meas_text_w, meas_text_h) + 8
 
-            # Position the box near the measurement (top-left corner)
-            box_x = x - 30
-            box_y = y - 30
+                # Position the box near the measurement (top-left corner)
+                box_x = x - 30
+                box_y = y - 30
 
-            # Draw white filled square
-            cv2.rectangle(vis_image, (box_x, box_y), (box_x + box_size, box_y + box_size), (255, 255, 255), -1)
-            # Draw black border
-            cv2.rectangle(vis_image, (box_x, box_y), (box_x + box_size, box_y + box_size), (0, 0, 0), 2)
+                # Draw white filled square
+                cv2.rectangle(vis_image, (box_x, box_y), (box_x + box_size, box_y + box_size), (255, 255, 255), -1)
+                # Draw black border
+                cv2.rectangle(vis_image, (box_x, box_y), (box_x + box_size, box_y + box_size), (0, 0, 0), 2)
 
-            # Center the number in the square
-            text_x = box_x + (box_size - meas_text_w) // 2
-            text_y = box_y + (box_size + meas_text_h) // 2 - meas_baseline // 2
+                # Center the number in the square
+                text_x = box_x + (box_size - meas_text_w) // 2
+                text_y = box_y + (box_size + meas_text_h) // 2 - meas_baseline // 2
 
-            # Draw measurement number
-            cv2.putText(vis_image, meas_num, (text_x, text_y),
-                       meas_font, meas_font_scale, (0, 0, 0), meas_thickness)
+                # Draw measurement number
+                cv2.putText(vis_image, meas_num, (text_x, text_y),
+                           meas_font, meas_font_scale, (0, 0, 0), meas_thickness)
 
     # Draw X-range visualization for unpaired heights
     if False and unpaired_heights_info:  # Disabled X-range visualization

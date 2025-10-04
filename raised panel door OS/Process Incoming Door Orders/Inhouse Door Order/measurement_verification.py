@@ -248,7 +248,8 @@ def verify_measurement_at_center_with_logic(image_path, center, bounds, texts, a
         image_dir = os.path.dirname(os.path.abspath(image_path))
 
         # Save debug images - now including zoomed versions
-        debug_base = f"DEBUG_{page_num}M{center_index}_pos{int(cx)}x{int(cy)}_{text_str}"
+        # Use center_index + 1 to match 1-based numbering in visualization (M1, M2, M3...)
+        debug_base = f"DEBUG_{page_num}M{center_index + 1}_pos{int(cx)}x{int(cy)}_{text_str}"
         debug_crop = os.path.join(image_dir, f"{debug_base}_crop.png")
         debug_zoom = os.path.join(image_dir, f"{debug_base}_zoom{zoom_factor}x.png")
         debug_hsv = os.path.join(image_dir, f"{debug_base}_hsv_zoom{zoom_factor}x.png")
@@ -331,7 +332,7 @@ def verify_measurement_at_center_with_logic(image_path, center, bounds, texts, a
     # Group items that are horizontally adjacent (for measurements like "13 7/8")
     # Adjust thresholds for zoomed image
     y_threshold = 15 * zoom_factor  # Scale for zoom
-    x_threshold = 100 * zoom_factor  # Increased to handle wider spaced measurements
+    x_threshold = 200 * zoom_factor  # Increased to handle wider spaced measurements with dashes
 
     # Filter out false positive "1"s (vertical lines detected as "1")
     filtered_items = []
