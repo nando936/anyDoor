@@ -14,7 +14,7 @@ HSV_CONFIG = {
 GROUPING_CONFIG = {
     'x_distance': 100,   # Max horizontal distance for grouping (increased to 100)
     'y_distance': 25,   # Max vertical distance for grouping (reduced to prevent vertical over-grouping)
-    'merge_threshold': 70  # Distance threshold for merging centers
+    'merge_threshold': 160  # Distance threshold for merging centers
 }
 
 # Zoom verification parameters
@@ -53,7 +53,10 @@ ROOM_PATTERNS = [
 ]
 
 # Non-measurement text to exclude
-EXCLUDE_PATTERNS = ['H2', 'NH', 'C', 'UPPERS', 'BASE']
+EXCLUDE_PATTERNS = ['H2', 'NH', 'C', 'UPPERS', 'BASE', 'OR']
 
 # Overlay notation pattern
 OVERLAY_PATTERN = r'(\d+/\d+\s+OL)'
+
+# Customer quantity notation pattern (e.g., "1 or 2", "2 or 3")
+QUANTITY_NOTATION_PATTERN = r'\d+\s+or\s+\d+'

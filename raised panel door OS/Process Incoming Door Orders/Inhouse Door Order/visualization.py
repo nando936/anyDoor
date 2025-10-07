@@ -566,6 +566,40 @@ def create_visualization(
                         (right_x + tick_dx, right_y + tick_dy),
                         (0, 0, 255), 5)
 
+                # ARROW END CALCULATION VISUALIZATION
+                # Draw a large CYAN circle at the right endpoint to mark arrow end calculation
+                cv2.circle(vis_image, (right_x, right_y), 12, (255, 255, 0), 3)  # Cyan outline
+                cv2.circle(vis_image, (right_x, right_y), 3, (255, 255, 0), -1)  # Cyan center dot
+                # Add label for arrow end
+                cv2.putText(vis_image, "ARROW END", (right_x + 15, right_y - 15),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)
+
+                # ARROW SEARCH ZONE VISUALIZATION
+                # Show how far left and right the arrow detection searched
+                if 'debug_rois' in extent:
+                    rois = extent['debug_rois']
+                    # Left search zone (magenta dashed rectangle)
+                    lx1, ly1, lx2, ly2 = rois['left']
+                    for px in range(lx1, lx2, 10):
+                        cv2.line(vis_image, (px, ly1), (min(px+5, lx2), ly1), (255, 0, 255), 2)
+                        cv2.line(vis_image, (px, ly2), (min(px+5, lx2), ly2), (255, 0, 255), 2)
+                    for py in range(ly1, ly2, 10):
+                        cv2.line(vis_image, (lx1, py), (lx1, min(py+5, ly2)), (255, 0, 255), 2)
+                        cv2.line(vis_image, (lx2, py), (lx2, min(py+5, ly2)), (255, 0, 255), 2)
+                    cv2.putText(vis_image, "LEFT SEARCH", (lx1 + 5, ly1 - 5),
+                               cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 0, 255), 2)
+
+                    # Right search zone (orange dashed rectangle)
+                    rx1, ry1, rx2, ry2 = rois['right']
+                    for px in range(rx1, rx2, 10):
+                        cv2.line(vis_image, (px, ry1), (min(px+5, rx2), ry1), (0, 165, 255), 2)
+                        cv2.line(vis_image, (px, ry2), (min(px+5, rx2), ry2), (0, 165, 255), 2)
+                    for py in range(ry1, ry2, 10):
+                        cv2.line(vis_image, (rx1, py), (rx1, min(py+5, ry2)), (0, 165, 255), 2)
+                        cv2.line(vis_image, (rx2, py), (rx2, min(py+5, ry2)), (0, 165, 255), 2)
+                    cv2.putText(vis_image, "RIGHT SEARCH", (rx2 - 100, ry1 - 5),
+                               cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 165, 255), 2)
+
                 # Add label showing measurement number and span
                 label_text = f"M{i+1} ({int(extent['span'])}px) {angle:.1f}°"
                 cv2.putText(vis_image, label_text, (left_x - 50, left_y - 25),
@@ -587,27 +621,38 @@ def create_visualization(
                         text_y = left_y - 96
                     else:
                         position_class = 'bottom'
-                        # Bottom widths: scan up to where top widths are + 1"
-                        # Find the Y position of top widths in the measurements list
-                        top_width_y = None
-                        if measurements_list:
-                            for other_meas in measurements_list:
-                                if 'drawer_config' in other_meas:
-                                    other_text = other_meas['drawer_config']
-                                    if 'top width' in other_text:
-                                        # Get the Y position of this top width from width_extent
-                                        if 'width_extent' in other_meas:
-                                            other_left_y = other_meas['width_extent'].get('left_y', None)
-                                            if other_left_y is not None:
-                                                if top_width_y is None or other_left_y < top_width_y:
-                                                    top_width_y = other_left_y
+                        # Bottom widths: scan to smallest height VALUE above
+                        # Find the height measurement with smallest VALUE above this width
+                        from shared_utils import fraction_to_decimal
+                        smallest_height_value = None
+                        smallest_height_y = None
+                        # Use measurement text Y position, not extent line Y position
+                        width_text_y = meas.get('position', [0, 0])[1]
+                        print(f"[VIZ DEBUG] Looking for heights above width at Y={width_text_y}")
+                        if measurements_list and measurement_categories:
+                            for idx, other_meas in enumerate(measurements_list):
+                                other_category = measurement_categories[idx] if idx < len(measurement_categories) else None
+                                print(f"[VIZ DEBUG]   M{idx+1}: text={other_meas.get('text')}, category={other_category}, Y={other_meas.get('position', [0,0])[1]}")
+                                # Check if this is a height measurement
+                                if other_category == 'height':
+                                    # Get the Y position of this height
+                                    other_y = other_meas.get('position', [0, 0])[1]
+                                    # Height is above the width if its Y is smaller (higher on page)
+                                    if other_y < width_text_y:
+                                        # Parse the height value
+                                        height_decimal = fraction_to_decimal(other_meas.get('text', ''))
+                                        if height_decimal:
+                                            if smallest_height_value is None or height_decimal < smallest_height_value:
+                                                smallest_height_value = height_decimal
+                                                smallest_height_y = other_y
 
-                        # If we found a top width, scan to it + 1", otherwise use default
-                        if top_width_y is not None:
-                            # Distance from current bottom width to top width + 1"
-                            scan_distance_px = abs(left_y - top_width_y) + 96  # +1" (96px)
+                        # Use distance to smallest height VALUE + 1", or 4" default if no heights found
+                        if smallest_height_y:
+                            scan_distance_px = int(width_text_y - smallest_height_y) + 96  # +1" (96px at 96 DPI)
+                            print(f"[VIZ SCAN] width_text_y={width_text_y}, smallest_height_y={smallest_height_y}, scan_distance={scan_distance_px}px (+ 1\")")
                         else:
-                            scan_distance_px = 60  # Default if no top width found
+                            scan_distance_px = 384  # 4" at 96 DPI default
+                            print(f"[VIZ SCAN] No smallest height found, using default 384px")
 
                         # Bottom widths: place text 3/4" BELOW the width line (72px at 96 DPI)
                         text_y = left_y + 72
@@ -645,12 +690,19 @@ def create_visualization(
                     extended_right_x = right_x + int(horizontal_extension * line_dx)
                     extended_right_y = right_y + int(horizontal_extension * line_dy)
 
-                    # Bottom edge: starts 1/8" above extended dimension line, parallel to it
+                    # Bottom edge: starts 1/8" above measurement text position, parallel to dimension line
+                    # For bottom widths, use measurement text Y position, not extent line Y position
+                    # Calculate offset from extent line to measurement text
+                    if position_class == 'bottom':
+                        y_offset_to_text = width_text_y - left_y  # Difference between text and extent line
+                    else:
+                        y_offset_to_text = 0
+
                     # First move perpendicular from the extended dimension line endpoints
-                    bottom_left_x = extended_left_x + int(offset_from_width * perp_dx)
-                    bottom_left_y = extended_left_y + int(offset_from_width * perp_dy)
-                    bottom_right_x = extended_right_x + int(offset_from_width * perp_dx)
-                    bottom_right_y = extended_right_y + int(offset_from_width * perp_dy)
+                    bottom_left_x = extended_left_x + int((offset_from_width + y_offset_to_text) * perp_dx)
+                    bottom_left_y = extended_left_y + int((offset_from_width + y_offset_to_text) * perp_dy)
+                    bottom_right_x = extended_right_x + int((offset_from_width + y_offset_to_text) * perp_dx)
+                    bottom_right_y = extended_right_y + int((offset_from_width + y_offset_to_text) * perp_dy)
 
                     # Top edge: scan_distance_px further in perpendicular direction
                     # For top widths, add additional_height; for bottom widths, it's already included in scan_distance_px

@@ -209,22 +209,19 @@ def find_down_arrows_near_heights(image, heights):
         height_y_positions = [h['y'] for h in heights]
         median_y = sorted(height_y_positions)[len(height_y_positions) // 2]
         bottom_heights = [h for h in heights if h['y'] >= median_y]
+        print(f"\n  [DOWN ARROW SCAN] Total heights: {len(heights)}, Median Y: {median_y}, Bottom heights: {len(bottom_heights)}")
     else:
         bottom_heights = []
 
     # For each bottom height measurement, look for a down arrow below it
     for height in bottom_heights:
+        print(f"  [DOWN ARROW SCAN] Checking height '{height['text']}' at ({height['x']:.0f}, {height['y']:.0f})")
         height_x = height['x']
         height_y = height['y']
 
         # Define search region below the height measurement
-        # Use height extent if available, otherwise use a default width
-        if 'height_extent' in height and height['height_extent']:
-            extent = height['height_extent']
-            # Use the bottom of the vertical extent as the search starting point
-            search_y_start = int(extent.get('bottom', height_y + 50))
-        else:
-            search_y_start = int(height_y + 50)
+        # Start from the measurement text position, not the extent bottom
+        search_y_start = int(height_y + 50)
 
         # Search area: 100px wide centered on height X, from search_y_start down 200px
         roi_x1 = max(0, int(height_x - 50))
@@ -232,51 +229,59 @@ def find_down_arrows_near_heights(image, heights):
         roi_y1 = search_y_start
         roi_y2 = min(image.shape[0], search_y_start + 200)
 
+        print(f"    Search ROI: x=[{roi_x1}, {roi_x2}], y=[{roi_y1}, {roi_y2}]")
+
         # Extract ROI
         roi = image[roi_y1:roi_y2, roi_x1:roi_x2]
 
         if roi.size == 0:
+            print(f"    ROI is empty, skipping")
             continue
 
-        # Convert to grayscale
-        gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+        # Use same arrow detection method as Phase 3
+        # Apply HSV filter to detect only green dimension arrows
+        from measurement_config import HSV_CONFIG
+        hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+        lower_green = np.array(HSV_CONFIG['lower_green'])
+        upper_green = np.array(HSV_CONFIG['upper_green'])
+        green_mask = cv2.inRange(hsv, lower_green, upper_green)
 
-        # Apply edge detection
-        edges = cv2.Canny(gray, 50, 150)
+        # Apply morphological operations
+        kernel = np.ones((2,2), np.uint8)
+        green_mask = cv2.morphologyEx(green_mask, cv2.MORPH_CLOSE, kernel)
 
-        # Detect lines
-        lines = cv2.HoughLinesP(edges, 1, np.pi/180, threshold=20, minLineLength=8, maxLineGap=5)
+        # Detect edges only on green-filtered image
+        edges = cv2.Canny(green_mask, 30, 100)
 
-        if lines is None:
-            continue
+        # Find lines
+        lines = cv2.HoughLinesP(edges, 1, np.pi/180, threshold=10, minLineLength=10, maxLineGap=5)
 
-        # Look for down arrow pattern (two converging lines forming V)
-        for i in range(len(lines)):
-            x1, y1, x2, y2 = lines[i][0]
-            angle = np.degrees(np.arctan2(y2 - y1, x2 - x1))
+        has_down_arrow = False
+        if lines is not None and len(lines) >= 2:
+            # Look for converging lines forming down arrow (like v)
+            converging_pairs = 0
+            for i in range(len(lines)):
+                x1, y1, x2, y2 = lines[i][0]
+                angle1 = np.degrees(np.arctan2(y2 - y1, x2 - x1))
 
-            # Look for diagonal lines
-            if 30 < abs(angle) < 80:
                 for j in range(i + 1, len(lines)):
                     x3, y3, x4, y4 = lines[j][0]
                     angle2 = np.degrees(np.arctan2(y4 - y3, x4 - x3))
 
-                    # Check if lines form a V (opposite angles)
-                    if abs(angle + angle2) < 40:
-                        # Lines should be close together
-                        center_x1 = (x1 + x2) / 2
-                        center_x2 = (x3 + x4) / 2
-                        center_y1 = (y1 + y2) / 2
-                        center_y2 = (y3 + y4) / 2
+                    # For down arrow, angles should point down from opposite sides
+                    angle_diff = abs(angle1 + angle2)
+                    if angle_diff > 150:
+                        converging_pairs += 1
 
-                        if abs(center_x1 - center_x2) < 40 and abs(center_y1 - center_y2) < 15:
-                            # Found a down arrow - convert ROI coordinates to image coordinates
-                            arrow_y = int(roi_y1 + max(y1, y2, y3, y4))
-                            down_arrow_positions.append(arrow_y)
-                            break
-                if len(down_arrow_positions) > len(heights) - (heights.index(height) + 1):
-                    # Found arrow for this height, move to next
-                    break
+            has_down_arrow = converging_pairs > 0
+
+        print(f"    Down arrow detected: {has_down_arrow}")
+
+        if has_down_arrow:
+            # Found a down arrow - record the Y position (center of search area)
+            arrow_y = int(roi_y1 + (roi_y2 - roi_y1) / 2)
+            down_arrow_positions.append(arrow_y)
+            print(f"    Added down arrow at Y={arrow_y}")
 
     return down_arrow_positions
 
@@ -395,7 +400,7 @@ def pair_measurements_by_proximity(classified_measurements, all_measurements, im
                         # Only analyze if this is a classified bottom width
                         if width.get('position_class') == 'bottom':
                             extent = meas['width_extent']
-                            drawer_config, edge_viz_data = analyze_drawer_above_width(width, extent, image)
+                            drawer_config, edge_viz_data = analyze_drawer_above_width(width, extent, image, heights)
                             width['drawer_config'] = drawer_config
                             width['edge_viz_data'] = edge_viz_data
                             # Store drawer_config and edge_viz_data back in all_measurements so viz can access it
@@ -429,13 +434,31 @@ def pair_measurements_by_proximity(classified_measurements, all_measurements, im
         print(f"    Drawer config: {drawer_config}")
         print(f"    Is bottom width with multiple drawers: {is_bottom_multiple}")
 
-        # Find heights within the width extent X range
+        # Calculate scan area X range (before the loop)
+        x_padding = 24  # 1/4 inch at 96 DPI (same as visualization horizontal_extension)
+        scan_left = width_left - x_padding
+        scan_right = width_right + x_padding
+        print(f"    Scan area X range: {scan_left:.0f} to {scan_right:.0f} (extent + {x_padding}px padding each side)")
+
+        # Find heights within the scan area X range (extent + horizontal padding)
         candidate_heights = []
         y_padding = 50  # Padding in pixels to account for skew
+
         for height in heights:
-            height_x = height['x']
-            # Check if height X position is within width extent
-            if width_left <= height_x <= width_right:
+            # Check if ANY part of the height text overlaps with scan area
+            # Use bounds if available, otherwise fall back to center position
+            if height.get('bounds'):
+                # Bounds format: {'left': x, 'right': x, 'top': y, 'bottom': y}
+                height_left = height['bounds']['left']
+                height_right = height['bounds']['right']
+                # Check if height overlaps with scan area horizontally
+                overlaps = not (height_right < scan_left or height_left > scan_right)
+            else:
+                # Fall back to center position check
+                height_x = height['x']
+                overlaps = scan_left <= height_x <= scan_right
+
+            if overlaps:
                 # Only consider heights above the width (with padding for skew)
                 if height['y'] < width['y'] + y_padding:
                     candidate_heights.append(height)
@@ -628,7 +651,7 @@ def pair_measurements_by_proximity(classified_measurements, all_measurements, im
     return openings, unpaired_heights_info
 
 
-def analyze_drawer_above_width(width, extent, image):
+def analyze_drawer_above_width(width, extent, image, heights=None):
     """
     Analyze the area above a width measurement to determine drawer configuration.
     Scans for H-lines to determine if there's 1 drawer or multiple drawers above.
@@ -637,6 +660,7 @@ def analyze_drawer_above_width(width, extent, image):
         width: Width measurement dict with 'position_class' field
         extent: Width extent dict with left/right bounds
         image: The source image
+        heights: List of height measurements (optional, used to determine scan distance)
 
     Returns:
         String: drawer configuration with position class label
@@ -651,16 +675,48 @@ def analyze_drawer_above_width(width, extent, image):
     width_right = int(extent['right'])
     width_y = int(width['y'])
 
+    # Calculate the actual angle from the extent line coordinates
+    left_y = extent.get('left_y', width_y)
+    right_y = extent.get('right_y', width_y)
+    dx = width_right - width_left
+    dy = right_y - left_y
+    extent_angle = np.degrees(np.arctan2(dy, dx))
+    print(f"    Extent angle calculated: {extent_angle:.2f}° (from left_y={left_y}, right_y={right_y})")
+
     # Determine scan height based on position class
     # Top widths: 5/8" = 60px at 96 DPI
-    # Bottom widths: 4" = 384px at 96 DPI (was 3", now 1" taller)
+    # Bottom widths: scan to smallest height above, or 4" default
     position_class = width.get('position_class', 'bottom')
 
     if position_class == 'top':
         scan_distance_px = 60  # 5/8 inch at 96 DPI
         class_label = "top width"
     else:
-        scan_distance_px = 384  # 4 inches at 96 DPI (3" + 1" taller)
+        # For bottom widths: find the HEIGHT with smallest VALUE above this width
+        # Then scan to that height's Y position
+        from shared_utils import fraction_to_decimal
+        smallest_height_value = None
+        smallest_height_y = None
+        if heights:
+            for height in heights:
+                height_y = height['y']
+                # Height is above the width if its Y is smaller (higher on page)
+                if height_y < width_y:
+                    # Parse the height value
+                    height_decimal = fraction_to_decimal(height['text'])
+                    if height_decimal:
+                        if smallest_height_value is None or height_decimal < smallest_height_value:
+                            smallest_height_value = height_decimal
+                            smallest_height_y = height_y
+
+        # Use distance to smallest height VALUE + 1", or 4" default if no heights found
+        if smallest_height_y:
+            scan_distance_px = int(width_y - smallest_height_y) + 96  # +1" (96px at 96 DPI)
+            print(f"    Scan distance: {scan_distance_px}px (to smallest height value: {smallest_height_value}\" + 1\")")
+        else:
+            scan_distance_px = 384  # 4 inches at 96 DPI default
+            print(f"    Scan distance: {scan_distance_px}px (default 4\")")
+
         class_label = "bottom width"
 
     # Define ROI above the width measurement
@@ -691,26 +747,50 @@ def analyze_drawer_above_width(width, extent, image):
     # Apply Canny edge detection
     edges = cv2.Canny(gray, 50, 150)
 
-    # Find horizontal edges by scanning each row
-    # Count rows that have significant horizontal edge activity
+    # Find horizontal edges by scanning with dynamic row height based on extent angle
+    # Calculate how many pixels tall we need to scan to capture an angled edge
     roi_height, roi_width = edges.shape
+
+    # Calculate vertical rise across the ROI width at this angle
+    vertical_rise = abs(np.tan(np.radians(extent_angle)) * roi_width)
+    # Row height should be at least the vertical rise, minimum 1px, maximum 50px
+    scan_row_height = max(1, min(50, int(vertical_rise)))
+
+    print(f"    Extent angle {extent_angle:.2f}° → scan row height: {scan_row_height}px (vertical rise: {vertical_rise:.1f}px across {roi_width}px width)")
+
     horizontal_edge_rows = []
 
-    for y in range(roi_height):
-        # Count edge pixels in this row
-        edge_count = np.sum(edges[y, :] > 0)
-        # If more than 20% of the row has edges, consider it a horizontal edge
-        if edge_count > roi_width * 0.2:
-            horizontal_edge_rows.append(y)
+    # Scan in steps of scan_row_height
+    edge_percentages = []
+    for y in range(0, roi_height, scan_row_height):
+        y_end = min(y + scan_row_height, roi_height)
+        # Count edge pixels in this row band
+        edge_count = np.sum(edges[y:y_end, :] > 0)
+        total_pixels = (y_end - y) * roi_width
+        edge_percentage = edge_count / total_pixels if total_pixels > 0 else 0
+        edge_percentages.append(edge_percentage)
 
-    # Cluster nearby rows (within 10 pixels) into single edges
+        # Lower threshold for taller bands (shelf edges are thin, maybe 2-3px)
+        # For a 3px thick edge across full width in a 36px tall band:
+        # 3 × 370 = 1110 pixels out of 13,320 total = 8.3%
+        threshold = 0.015  # 1.5% threshold
+        if edge_percentage > threshold:
+            horizontal_edge_rows.append(y + (y_end - y) // 2)  # Use middle of the band
+
+    # Show statistics
+    if edge_percentages:
+        print(f"    Edge % range: min={min(edge_percentages)*100:.2f}%, max={max(edge_percentages)*100:.2f}%, avg={np.mean(edge_percentages)*100:.2f}%")
+
+    print(f"    Found {len(horizontal_edge_rows)} row bands with >{threshold*100:.0f}% edge pixels (using {scan_row_height}px tall bands)")
+
+    # Cluster nearby rows (within 20 pixels) into single edges
     edge_count = 0
     clustered_edges = []  # Store the Y positions of clustered edges
     if horizontal_edge_rows:
         edge_count = 1
         cluster_start = horizontal_edge_rows[0]
         for i in range(1, len(horizontal_edge_rows)):
-            if horizontal_edge_rows[i] - horizontal_edge_rows[i-1] > 10:
+            if horizontal_edge_rows[i] - horizontal_edge_rows[i-1] > 20:  # Changed from 10 to 20
                 # Save the middle of the previous cluster
                 clustered_edges.append((cluster_start + horizontal_edge_rows[i-1]) // 2)
                 edge_count += 1

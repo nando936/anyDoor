@@ -5,7 +5,8 @@
       "Bash(for i in {13..20})",
       "Bash(do echo \"=== PAGE $i ===\")",
       "Bash(done)",
-      "Bash(for i in 14 15 16 17 18 19 20)"
+      "Bash(for i in 14 15 16 17 18 19 20)",
+      "Read(//c/vmware-host/Shared Folders/suarez group qb/customers/raised panel/Measures-2025-09-08(17-08)/all_pages/**)"
     ],
     "deny": [],
     "ask": []

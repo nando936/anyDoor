@@ -10,7 +10,7 @@ import base64
 import requests
 import re
 from measurement_config import (
-    ROOM_PATTERNS, EXCLUDE_PATTERNS, OVERLAY_PATTERN, GROUPING_CONFIG
+    ROOM_PATTERNS, EXCLUDE_PATTERNS, OVERLAY_PATTERN, QUANTITY_NOTATION_PATTERN, GROUPING_CONFIG
 )
 from image_preprocessing import apply_hsv_preprocessing, find_opencv_supplemental_regions
 
@@ -97,10 +97,29 @@ def find_room_and_overlay(annotations):
                         exclude_items.append({'text': text, 'x': x, 'y': y})
                 break
 
+        # Check for customer quantity notation (e.g., "1 or 2")
+        quantity_matches = re.finditer(QUANTITY_NOTATION_PATTERN, full_text, re.IGNORECASE)
+        for match in quantity_matches:
+            notation_text = match.group(0)
+            print(f"Found quantity notation: {notation_text}")
+
+            # Find all parts of the notation in annotations and exclude them
+            parts = notation_text.split()  # e.g., ["1", "or", "2"]
+            for part in parts:
+                for ann in annotations[1:]:
+                    if ann['description'].lower() == part.lower():
+                        vertices = ann['boundingPoly']['vertices']
+                        x = sum(v.get('x', 0) for v in vertices) / 4
+                        y = sum(v.get('y', 0) for v in vertices) / 4
+                        exclude_items.append({'text': ann['description'], 'x': x, 'y': y})
+
         # Also exclude common non-measurement text
         for ann in annotations[1:]:
             text = ann['description'].upper()
-            if text in EXCLUDE_PATTERNS:
+            # Check if the entire text matches OR if any word in the text matches
+            words = text.split()
+            should_exclude = text in EXCLUDE_PATTERNS or any(word in EXCLUDE_PATTERNS for word in words)
+            if should_exclude:
                 vertices = ann['boundingPoly']['vertices']
                 x = sum(v.get('x', 0) for v in vertices) / 4
                 y = sum(v.get('y', 0) for v in vertices) / 4
@@ -404,8 +423,41 @@ def find_interest_areas(image_path, api_key):
     return interest_areas, room_name, overlay_info, opencv_regions  # Return opencv_regions too
 
 
+def is_valid_measurement(texts):
+    """
+    Check if a set of texts forms a valid measurement.
+    Valid patterns:
+    - Single number: "18", "22"
+    - Number with fraction: "6 3/8", "22 1/16"
+    - Just a fraction: "1/2", "3/8"
+    Invalid: Multiple complete measurements like "6 3/8" and "18"
+    """
+    import re
+
+    # Join texts and check pattern
+    combined = ' '.join(texts)
+
+    # Count whole numbers and fractions
+    whole_numbers = re.findall(r'\b\d+\b(?!\s*/)', combined)  # Numbers not followed by /
+    fractions = re.findall(r'\b\d+/\d+', combined)  # Fractions like 3/8
+
+    # Valid if we have:
+    # - 0 or 1 whole number AND 0 or 1 fraction
+    has_valid_count = len(whole_numbers) <= 1 and len(fractions) <= 1
+
+    # Invalid if we have multiple whole numbers (like "6" and "18")
+    if len(whole_numbers) > 1:
+        return False
+
+    return has_valid_count
+
+
 def merge_close_centers(interest_areas, threshold=None):
-    """Merge centers that are too close together"""
+    """
+    Merge centers that are too close together.
+    IMPORTANT: Only merge if the result forms a VALID measurement.
+    Don't merge two complete measurements (like "6 3/8" + "18").
+    """
     if threshold is None:
         threshold = GROUPING_CONFIG['merge_threshold']
     print(f"\n=== Merging Close Centers (threshold={threshold}px) ===")
@@ -440,14 +492,19 @@ def merge_close_centers(interest_areas, threshold=None):
             y_dist = abs(area['center'][1] - other['center'][1])
 
             # Use different thresholds for X and Y
-            # Y should be tight (max 30px) since text on same line should have similar Y
+            # Y should be tight (max 45px) since text on same line should have similar Y
             # X can be more relaxed (use full threshold)
-            if x_dist < threshold and y_dist < 30:
-                merged_area['centers'].append(other['center'])
-                merged_area['all_bounds'].append(other['bounds'])
-                merged_area['all_texts'].extend(other['texts'])
-                used.add(j)
-                print(f"  Merging areas at {area['center']} and {other['center']} (x_dist={x_dist:.1f}, y_dist={y_dist:.1f})")
+            if x_dist < threshold and y_dist < 45:
+                # Check if merging would create a valid measurement
+                proposed_texts = merged_area['all_texts'] + other['texts']
+                if is_valid_measurement(proposed_texts):
+                    merged_area['centers'].append(other['center'])
+                    merged_area['all_bounds'].append(other['bounds'])
+                    merged_area['all_texts'].extend(other['texts'])
+                    used.add(j)
+                    print(f"  Merging areas at {area['center']} and {other['center']} (x_dist={x_dist:.1f}, y_dist={y_dist:.1f})")
+                else:
+                    print(f"  SKIP merging {area['center']} and {other['center']} - would create invalid measurement: {proposed_texts}")
 
         # Calculate merged center and bounds
         avg_x = sum(c[0] for c in merged_area['centers']) / len(merged_area['centers'])

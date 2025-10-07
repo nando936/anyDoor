@@ -48,6 +48,27 @@ def is_suspicious_measurement(text):
     if text.startswith('-') or text.startswith('−'):
         return True, "leading_dash"
 
+    # Pattern 6: Measurement over 120 inches (likely OCR error - missing space/fraction)
+    # Extract numeric value from text
+    try:
+        # Try to parse as a simple number first
+        match = re.match(r'^(\d+)(?:\s+(\d+)/(\d+))?', text)
+        if match:
+            whole = int(match.group(1))
+            if match.group(2) and match.group(3):
+                # Has fraction - calculate total
+                frac_num = int(match.group(2))
+                frac_den = int(match.group(3))
+                value = whole + (frac_num / frac_den)
+            else:
+                # Just whole number
+                value = whole
+
+            if value > 120:
+                return True, "over_120_inches"
+    except:
+        pass
+
     return False, None
 
 

@@ -329,6 +329,17 @@ def verify_measurement_at_center_with_logic(image_path, center, bounds, texts, a
         for item in individual_items:
             print(f"      '{item['text']}'")
 
+    # Filter out excluded patterns (like "OR" from "or 2")
+    from measurement_config import EXCLUDE_PATTERNS
+    filtered_by_exclude = []
+    for item in individual_items:
+        text_upper = item['text'].upper()
+        if text_upper in EXCLUDE_PATTERNS:
+            print(f"    Excluding '{item['text']}' - matches exclude pattern")
+            continue
+        filtered_by_exclude.append(item)
+    individual_items = filtered_by_exclude
+
     # Group items that are horizontally adjacent (for measurements like "13 7/8")
     # Adjust thresholds for zoomed image
     y_threshold = 15 * zoom_factor  # Scale for zoom

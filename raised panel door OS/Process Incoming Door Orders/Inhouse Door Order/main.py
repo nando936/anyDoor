@@ -14,13 +14,29 @@ sys.stdout.reconfigure(encoding='utf-8')
 # Load environment variables
 load_dotenv()
 
-# Import modules
+# Add parent directory to path for shared utilities
+parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, parent_dir)
+
+from shared_utils import (
+    fraction_to_decimal,
+    convert_opening_to_finished,
+    parse_overlay_spec,
+    calculate_sqft,
+    calculate_summary,
+    save_unified_json,
+    get_current_date
+)
+
+# Import local modules
 from text_detection import find_interest_areas, merge_close_centers
 from measurement_verification import verify_measurement_at_center_with_logic
 from line_detection import classify_measurements_by_lines
-from measurement_pairing import pair_measurements_by_proximity
+from measurement_pairing_v2 import pair_measurements_by_proximity
 from visualization import create_visualization
 from claude_verification import is_suspicious_measurement, verify_measurements_with_claude, apply_claude_corrections
+from prompt_user_info import prompt_for_order_info
+import json
 
 
 def main(start_opening_number=1):
@@ -215,7 +231,7 @@ def main(start_opening_number=1):
     unpaired_heights_info = []
     if measurement_categories and measurements_list:
         print("\n=== PHASE 4: Pairing Measurements into Cabinet Openings ===")
-        paired_openings, unpaired_heights_info = pair_measurements_by_proximity(measurement_categories, measurements_list)
+        paired_openings, unpaired_heights_info = pair_measurements_by_proximity(measurement_categories, measurements_list, image_cv)
 
         if paired_openings:
             print("\nCABINET OPENING SPECIFICATIONS:")
@@ -286,7 +302,6 @@ def main(start_opening_number=1):
 
     # Save pairing results to JSON
     if paired_openings:
-        import json
         base_name = os.path.splitext(os.path.basename(image_path))[0]
         output_dir = os.path.dirname(os.path.abspath(image_path))
 
@@ -323,9 +338,111 @@ def main(start_opening_number=1):
             json.dump(results_data, f, indent=2)
         print(f"\n[SAVED] Cabinet openings data: {output_json}")
 
+        # Also save in unified format
+        unified_data = convert_inhouse_to_unified(
+            results_data,
+            image_path,
+            room_name,
+            overlay_info
+        )
+        unified_json_path = os.path.join(output_dir, f"{base_name}_unified_door_order.json")
+        save_unified_json(unified_data, unified_json_path)
+
     print("\n" + "=" * 80)
     print("PIPELINE COMPLETE")
     print("=" * 80)
+
+
+def convert_inhouse_to_unified(inhouse_data, original_file_path, room_name, overlay_info):
+    """
+    Convert Inhouse cabinet openings format to Unified Door Order format
+
+    Args:
+        inhouse_data: Dictionary in Inhouse format
+        original_file_path: Path to original image file
+        room_name: Room name from detection
+        overlay_info: Overlay specification (e.g., "5/8 OL")
+
+    Returns:
+        dict: Data in unified format
+    """
+    # Prompt user for missing order information
+    order_info_user, specifications, _ = prompt_for_order_info(original_file_path)
+
+    # Parse overlay to get decimal value
+    overlay_decimal = parse_overlay_spec(overlay_info) if overlay_info else 0.625  # Default 5/8"
+
+    # Load config for drawer height threshold
+    config_path = os.path.join(os.path.dirname(__file__), 'inhouse_defaults.json')
+    if os.path.exists(config_path):
+        with open(config_path, 'r') as f:
+            config = json.load(f)
+            drawer_threshold = config.get('drawer_height_threshold', 10.0)
+    else:
+        drawer_threshold = 10.0
+
+    # Convert openings to doors/drawers with finished sizes
+    doors = []
+    drawers = []
+
+    for opening in inhouse_data.get('openings', []):
+        width_opening = opening.get('width', '')
+        height_opening = opening.get('height', '')
+
+        # Skip invalid measurements (OCR errors like "or 2")
+        try:
+            # Convert opening sizes to finished sizes
+            width_finished, width_dec = convert_opening_to_finished(width_opening, overlay_decimal)
+            height_finished, height_dec = convert_opening_to_finished(height_opening, overlay_decimal)
+        except (ValueError, AttributeError) as e:
+            print(f"[WARNING] Skipping invalid opening #{opening.get('number', '?')}: {width_opening} x {height_opening} - {e}")
+            continue
+
+        # Create item structure
+        item = {
+            "marker": f"#{opening.get('number', '')}",
+            "qty": 1,  # Inhouse openings are individual
+            "width": width_finished,
+            "height": height_finished,
+            "width_decimal": width_dec,
+            "height_decimal": height_dec,
+            "location": room_name if room_name else ""
+        }
+
+        # Classify as door or drawer based on height
+        if height_dec <= drawer_threshold:
+            drawers.append(item)
+        else:
+            item["sqft"] = calculate_sqft(width_dec, height_dec)
+            doors.append(item)
+
+    # Build unified format
+    unified_data = {
+        "schema_version": "1.0",
+        "source": {
+            "type": "inhouse",
+            "original_file": os.path.basename(original_file_path),
+            "extraction_date": get_current_date(),
+            "extractor_version": "1.0"
+        },
+        "order_info": {
+            "customer_company": order_info_user.get('customer_company', ''),
+            "jobsite": order_info_user.get('jobsite', ''),
+            "room": room_name if room_name else "",
+            "submitted_by": order_info_user.get('submitted_by', ''),
+            "order_date": get_current_date()
+        },
+        "specifications": specifications,
+        "size_info": {
+            "all_sizes_are_finished": True,
+            "conversion_notes": f"Converted from opening sizes using {overlay_info if overlay_info else '5/8'} overlay"
+        },
+        "doors": doors,
+        "drawers": drawers,
+        "summary": calculate_summary(doors, drawers)
+    }
+
+    return unified_data
 
 
 if __name__ == "__main__":
