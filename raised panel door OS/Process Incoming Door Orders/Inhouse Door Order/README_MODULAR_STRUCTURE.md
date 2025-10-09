@@ -145,6 +145,54 @@ python main.py "//vmware-host/Shared Folders/project/page_1.png"
 The script generates:
 - `*_test_viz.png` - Annotated visualization with all detections and markers
 - `*_cabinet_openings.json` - Structured data with all measurements and openings
+- `*_debug.txt` - Complete debug log with all classification decisions
+
+## Debugging Measurement Classifications
+
+### Debug Log Analysis Protocol
+
+**When asked "why was measurement X classified as WIDTH/HEIGHT/UNCLASSIFIED?":**
+
+Provide ONLY the actual data from the `*_debug.txt` file for that measurement:
+
+1. **For each rotation attempt (0°, +22.5°, -22.5°):**
+   - What lines were detected in each ROI (Left H-ROI, Right H-ROI, Top V-ROI, Bottom V-ROI)
+   - The exact angles found for each line
+   - How many lines passed/failed filtering (with reasons)
+   - Whether arrows were detected
+
+2. **The exact logic that led to classification:**
+   - Which ROIs had indicators (L-horiz, R-horiz, T-vert, B-vert)
+   - The final classification decision and why
+
+3. **NO speculation, NO "likely" responses** - only facts from the debug log
+
+### Example Debug Log Response:
+
+```
+M11 '18 1/16' at (630, 2000):
+
+Attempt 1 (0° rotation):
+- Left H-ROI: 0 lines
+- Right H-ROI: 1 line (angle=86.3°)
+- Top V-ROI: 5 lines
+- Bottom V-ROI: 9 lines (all filtered - angles 0-38°, not in 55-125° range)
+- Result: UNCLASSIFIED (L-horiz:False R-horiz:False)
+
+Attempt 2 (+22.5° rotation):
+- Top V-ROI: 8 lines, up-arrow=True
+- Result: UNCLASSIFIED (T-vert:True B-vert:False)
+
+Attempt 3 (-22.5° rotation):
+- Left H-ROI: 0 lines
+- Right H-ROI: 1 line (angle=-13.8°)
+- Top V-ROI: 1 v-line (angle=-69.1°, adjusted=-91.6°)
+- Bottom V-ROI: 1 v-line (angle=-68.6°, adjusted=-91.1°)
+- Result: "Found vertical indicators: top(1 v-lines) + bottom(1 v-lines) → HEIGHT"
+- Final: HEIGHT (via -22.5° rotation)
+```
+
+This data-driven approach ensures accurate troubleshooting based on what the script actually detected.
 
 ## Original File Reference
 

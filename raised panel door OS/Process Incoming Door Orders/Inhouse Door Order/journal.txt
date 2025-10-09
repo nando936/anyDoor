@@ -1,0 +1,71 @@
+================================================================================
+INHOUSE DOOR ORDER - DEVELOPMENT JOURNAL
+================================================================================
+
+Date: 2025-10-09
+
+WORKING DIRECTORIES:
+-------------------
+Scripts Location:
+  /home/debian/projects/anyDoor/raised panel door OS/Process Incoming Door Orders/Inhouse Door Order/
+
+Images Location:
+  /home/debian/OneDrive/raised_panel/Measures-2025-09-09(14-18)/all_pages/
+
+RECENT CHANGES:
+--------------
+2025-10-09 - ROI Gap Fix for Rotated Classification
+
+  Problem: When ROI is rotated (±22.5°), the V-ROI boundaries overlap with
+  measurement text edges, causing text strokes to be detected as vertical
+  dimension lines.
+
+  Solution: Added dynamic gap multiplier (2.5x) for rotated ROIs:
+    - H-ROI gap: 10px → 25px (when rotated)
+    - V-ROI gap: 5px → 12.5px (when rotated)
+
+  Files Modified:
+    - line_detection.py (lines 144-163, 197, 202)
+
+  Result: Page 8 M11 now correctly classified as WIDTH instead of HEIGHT
+    - Before: 1 WIDTH, 8 HEIGHTs, 7 openings (incorrect)
+    - After: 2 WIDTHs, 6 HEIGHTs, 4 openings (correct)
+
+2025-10-09 - Added Counter-Clockwise Rotation (-22.5°)
+
+  Enhancement: Extended rotation fallback to try both +22.5° and -22.5° when
+  initial 0° classification fails.
+
+  Files Modified:
+    - line_detection.py (lines 1427-1470)
+
+  Result: Improved width detection for pages with counter-clockwise skew
+
+2025-10-09 - Added Debug Logging to File
+
+  Enhancement: All stdout now redirected to both console and debug file
+
+  Files Modified:
+    - main.py (added Tee class, lines 19-35, 87-96, 418-422)
+
+  Output: *_debug.txt files saved alongside images for analysis
+
+USAGE:
+------
+Run script on a page:
+  python3 main.py "/path/to/page_X.png"
+
+Output files generated:
+  - page_X_test_viz.png (visualization)
+  - page_X_cabinet_openings.json (measurements data)
+  - page_X_unified_door_order.json (unified format)
+  - page_X_debug.txt (complete debug log)
+
+TESTING STATUS:
+--------------
+Last tested pages:
+  - Page 6: 5 openings detected (closet, 11/16 OL)
+  - Page 7: 4 openings detected (closet, 11/16 OL)
+  - Page 8: 4 openings detected (Bath #4, 11/16 OL) ✅ Fixed
+
+================================================================================
