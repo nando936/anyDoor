@@ -204,17 +204,10 @@ def find_down_arrows_near_heights(image, heights):
 
     down_arrow_positions = []
 
-    # Only look at heights in the bottom half of the page (higher Y = lower on page)
-    if heights:
-        height_y_positions = [h['y'] for h in heights]
-        median_y = sorted(height_y_positions)[len(height_y_positions) // 2]
-        bottom_heights = [h for h in heights if h['y'] >= median_y]
-        print(f"\n  [DOWN ARROW SCAN] Total heights: {len(heights)}, Median Y: {median_y}, Bottom heights: {len(bottom_heights)}")
-    else:
-        bottom_heights = []
+    print(f"\n  [DOWN ARROW SCAN] Total heights: {len(heights)}")
 
-    # For each bottom height measurement, look for a down arrow below it
-    for height in bottom_heights:
+    # For each height measurement, look for a down arrow below it
+    for height in heights:
         print(f"  [DOWN ARROW SCAN] Checking height '{height['text']}' at ({height['x']:.0f}, {height['y']:.0f})")
         height_x = height['x']
         height_y = height['y']
@@ -250,6 +243,13 @@ def find_down_arrows_near_heights(image, heights):
         kernel = np.ones((2,2), np.uint8)
         green_mask = cv2.morphologyEx(green_mask, cv2.MORPH_CLOSE, kernel)
 
+        # Save debug images
+        import os
+        debug_dir = os.path.dirname(image.__class__.__name__)  # Get directory
+        # Actually, get image path from somewhere... for now just save to /tmp
+        cv2.imwrite(f"/tmp/arrow_search_roi_{int(height_x)}_{int(height_y)}.png", roi)
+        cv2.imwrite(f"/tmp/arrow_search_green_{int(height_x)}_{int(height_y)}.png", green_mask)
+
         # Detect edges only on green-filtered image
         edges = cv2.Canny(green_mask, 30, 100)
 
@@ -258,35 +258,64 @@ def find_down_arrows_near_heights(image, heights):
 
         has_down_arrow = False
         if lines is not None and len(lines) >= 2:
-            # Look for converging lines forming down arrow (like v)
-            converging_pairs = 0
-            for i in range(len(lines)):
-                x1, y1, x2, y2 = lines[i][0]
-                angle1 = np.degrees(np.arctan2(y2 - y1, x2 - x1))
+            print(f"    Found {len(lines)} lines in green-filtered ROI")
 
-                for j in range(i + 1, len(lines)):
-                    x3, y3, x4, y4 = lines[j][0]
-                    angle2 = np.degrees(np.arctan2(y4 - y3, x4 - x3))
+            # Print ALL angles first to debug
+            all_angles = []
+            for line in lines:
+                x1, y1, x2, y2 = line[0]
+                angle = np.degrees(np.arctan2(y2 - y1, x2 - x1))
+                # Normalize angle to 0-360 range
+                if angle < 0:
+                    angle += 360
+                all_angles.append(angle)
+            print(f"    All line angles: {[f'{a:.1f}' for a in sorted(all_angles)]}")
 
-                    # For down arrow, angles should point down from opposite sides
-                    angle_diff = abs(angle1 + angle2)
-                    if angle_diff > 150:
-                        converging_pairs += 1
+            # Look for down arrow: two lines forming V pointing down
+            # Based on actual measurements:
+            # Right leg: 20-88° (going down-right from apex, allows steeper arrows)
+            # Left leg: 285-360° (going down-left, allows very narrow V like 28 1/16)
+            down_right_lines = []  # Lines going down-right (20-80°)
+            down_left_lines = []   # Lines going down-left (285-360°)
 
-            has_down_arrow = converging_pairs > 0
+            for line in lines:
+                x1, y1, x2, y2 = line[0]
+                angle = np.degrees(np.arctan2(y2 - y1, x2 - x1))
+
+                # Normalize angle to 0-360 range
+                if angle < 0:
+                    angle += 360
+
+                # Check if line is right leg of V (20° to 88°)
+                if 20 <= angle <= 88:
+                    down_right_lines.append((x1, y1, x2, y2, angle))
+                # Check if line is left leg of V (285° to 360°, allows very narrow V)
+                elif 285 <= angle <= 360:
+                    down_left_lines.append((x1, y1, x2, y2, angle))
+
+            print(f"    Down-right lines (20-88°): {len(down_right_lines)}")
+            print(f"    Down-left lines (285-360°): {len(down_left_lines)}")
+
+            # Check if we have at least one line in each direction
+            # If both leg types exist, we have an arrow (even if fragmented)
+            if down_right_lines and down_left_lines:
+                has_down_arrow = True
+                print(f"      FOUND ARROW: {len(down_right_lines)} DR lines, {len(down_left_lines)} DL lines")
 
         print(f"    Down arrow detected: {has_down_arrow}")
 
         if has_down_arrow:
-            # Found a down arrow - record the Y position (center of search area)
-            arrow_y = int(roi_y1 + (roi_y2 - roi_y1) / 2)
-            down_arrow_positions.append(arrow_y)
-            print(f"    Added down arrow at Y={arrow_y}")
+            # Found a down arrow - record the Y position (near top of search area, where arrow actually is)
+            # Arrow is typically 50px below the height text, not at center of 200px ROI
+            arrow_y = int(roi_y1 + 50)  # 50px from top of ROI (closer to actual arrow position)
+            arrow_x = int(height_x)
+            down_arrow_positions.append((arrow_x, arrow_y))
+            print(f"    Added down arrow at ({arrow_x}, {arrow_y})")
 
     return down_arrow_positions
 
 
-def pair_measurements_by_proximity(classified_measurements, all_measurements, image=None):
+def pair_measurements_by_proximity(classified_measurements, all_measurements, image=None, image_path=None):
     """
     V2 - New pairing logic
 
@@ -341,6 +370,7 @@ def pair_measurements_by_proximity(classified_measurements, all_measurements, im
 
     # Classify ONLY bottom widths based on down arrow positions
     # All other widths remain unclassified (no position_class field)
+    down_arrow_y_positions = []  # Initialize for return value
     if widths and image is not None:
         import cv2
         import numpy as np
@@ -348,24 +378,141 @@ def pair_measurements_by_proximity(classified_measurements, all_measurements, im
         # Find down arrows below height measurements
         down_arrow_y_positions = find_down_arrows_near_heights(image, heights)
 
+        # Store bottom width reference line for visualization
+        bottom_width_line = None
+
         if down_arrow_y_positions:
-            # Get the Y-coordinate of the lowest down arrows (highest Y value)
-            max_arrow_y = max(down_arrow_y_positions)
+            # LINE-BASED APPROACH:
+            # 1. Split arrows into LEFT side vs RIGHT side (using image midpoint)
+            # 2. Find the LOWEST arrow on LEFT side (max Y)
+            # 3. Find the LOWEST arrow on RIGHT side (max Y)
+            # 4. Connect those two arrows
 
-            # Define tolerance range (within 150px of the lowest arrows)
-            y_tolerance = 150
+            print(f"\n  Down arrow classification (LINE-BASED):")
+            print(f"    Found {len(down_arrow_y_positions)} total down arrows")
 
-            print(f"\n  Down arrow classification:")
-            print(f"    Found {len(down_arrow_y_positions)} down arrows")
-            print(f"    Lowest arrow Y: {max_arrow_y}")
-            print(f"    Bottom width range: {max_arrow_y - y_tolerance} to {max_arrow_y + y_tolerance}")
+            # Get image midpoint X
+            image_midpoint_x = image.shape[1] / 2
+            print(f"    Image midpoint X: {image_midpoint_x:.0f}")
 
-            # Classify ONLY widths that are within range as 'bottom'
-            # All others remain unclassified (no position_class field)
-            for width in widths:
-                if abs(width['y'] - max_arrow_y) <= y_tolerance:
-                    width['position_class'] = 'bottom'
-                    print(f"      Classified '{width['text']}' at ({width['x']:.0f}, {width['y']:.0f}) as BOTTOM")
+            # Split arrows into left and right sides
+            left_arrows = [pos for pos in down_arrow_y_positions if pos[0] < image_midpoint_x]
+            right_arrows = [pos for pos in down_arrow_y_positions if pos[0] >= image_midpoint_x]
+
+            print(f"    Left side arrows: {len(left_arrows)}")
+            print(f"    Right side arrows: {len(right_arrows)}")
+
+            if len(left_arrows) >= 1 and len(right_arrows) >= 1:
+                # Find lowest arrow on left side (maximum Y)
+                leftmost_lowest_arrow = max(left_arrows, key=lambda pos: pos[1])
+                # Find lowest arrow on right side (maximum Y)
+                rightmost_lowest_arrow = max(right_arrows, key=lambda pos: pos[1])
+
+                print(f"    Lowest arrow on LEFT side: ({leftmost_lowest_arrow[0]}, {leftmost_lowest_arrow[1]})")
+                print(f"    Lowest arrow on RIGHT side: ({rightmost_lowest_arrow[0]}, {rightmost_lowest_arrow[1]})")
+
+                # Store line for visualization
+                bottom_width_line = {
+                    'start': leftmost_lowest_arrow,
+                    'end': rightmost_lowest_arrow
+                }
+
+                # Calculate GLOBAL smallest height value across ALL heights
+                # This will be used to create ONE shared offset reference line
+                from shared_utils import fraction_to_decimal
+                global_smallest_height_value = None
+                global_smallest_height_y = None
+
+                for height in heights:
+                    height_decimal = fraction_to_decimal(height['text'])
+                    if height_decimal:
+                        if global_smallest_height_value is None or height_decimal < global_smallest_height_value:
+                            global_smallest_height_value = height_decimal
+                            global_smallest_height_y = height['y']
+
+                # Calculate ONE offset reference line based on global smallest height
+                if global_smallest_height_y:
+                    # Find a representative bottom width Y position (use leftmost_lowest_arrow Y)
+                    ref_y = leftmost_lowest_arrow[1]
+                    scan_distance_px = int(ref_y - global_smallest_height_y)  # Distance to smallest height (no extra offset)
+                    print(f"    Global smallest height: {global_smallest_height_value}\" at Y={global_smallest_height_y}")
+                    print(f"    Global offset distance: {scan_distance_px}px (to smallest height)")
+
+                    # Calculate perpendicular unit vector for the reference line (pointing UP)
+                    ref_x1, ref_y1 = leftmost_lowest_arrow
+                    ref_x2, ref_y2 = rightmost_lowest_arrow
+                    ref_dx = ref_x2 - ref_x1
+                    ref_dy = ref_y2 - ref_y1
+                    ref_length = np.sqrt(ref_dx**2 + ref_dy**2)
+
+                    if ref_length > 0:
+                        # Unit direction vector
+                        ref_ux = ref_dx / ref_length
+                        ref_uy = ref_dy / ref_length
+
+                        # Perpendicular unit vector (rotate 90° counterclockwise)
+                        perp_x = -ref_uy
+                        perp_y = ref_ux
+
+                        # We want the perpendicular that points UP (towards smaller Y)
+                        if perp_y > 0:  # Points down (larger Y)
+                            perp_x = -perp_x
+                            perp_y = -perp_y
+
+                        # Offset both endpoints of reference line UP by scan_distance_px
+                        offset_ref_x1 = ref_x1 + perp_x * scan_distance_px
+                        offset_ref_y1 = ref_y1 + perp_y * scan_distance_px
+                        offset_ref_x2 = ref_x2 + perp_x * scan_distance_px
+                        offset_ref_y2 = ref_y2 + perp_y * scan_distance_px
+
+                        # Store the SHARED offset reference line
+                        bottom_width_line['offset_reference_line'] = {
+                            'start': (int(offset_ref_x1), int(offset_ref_y1)),
+                            'end': (int(offset_ref_x2), int(offset_ref_y2))
+                        }
+                        print(f"    Global offset reference line: ({offset_ref_x1:.1f}, {offset_ref_y1:.1f}) to ({offset_ref_x2:.1f}, {offset_ref_y2:.1f})")
+
+                # Distance threshold from the line
+                perpendicular_tolerance = 200
+
+                print(f"    Bottom width threshold: ±{perpendicular_tolerance}px from reference line")
+
+                # Classify widths based on perpendicular distance from the line
+                for width in widths:
+                    width_point = (width['x'], width['y'])
+
+                    # Calculate perpendicular distance from width to the line
+                    # Line equation: from (x1,y1) to (x2,y2)
+                    x1, y1 = leftmost_lowest_arrow
+                    x2, y2 = rightmost_lowest_arrow
+                    wx, wy = width_point
+
+                    # If line is just a point (leftmost == rightmost), use simple Y distance
+                    if abs(x2 - x1) < 1 and abs(y2 - y1) < 1:
+                        distance = abs(wy - y1)
+                    else:
+                        # Perpendicular distance formula: |ax + by + c| / sqrt(a^2 + b^2)
+                        # Line in form: (y2-y1)x - (x2-x1)y + (x2-x1)y1 - (y2-y1)x1 = 0
+                        # So: a = (y2-y1), b = -(x2-x1), c = (x2-x1)y1 - (y2-y1)x1
+                        a = y2 - y1
+                        b = -(x2 - x1)
+                        c = (x2 - x1) * y1 - (y2 - y1) * x1
+
+                        distance = abs(a * wx + b * wy + c) / np.sqrt(a**2 + b**2)
+
+                    if distance <= perpendicular_tolerance:
+                        width['position_class'] = 'bottom'
+                        print(f"      Classified '{width['text']}' at ({width['x']:.0f}, {width['y']:.0f}) as BOTTOM (dist={distance:.1f}px)")
+
+                        # IMPORTANT: Copy position_class back to original measurements_list
+                        # So visualization can show "BOTTOM WIDTH" label
+                        for meas in all_measurements:
+                            if (meas.get('text') == width['text'] and
+                                abs(meas['position'][0] - width['x']) < 1 and
+                                abs(meas['position'][1] - width['y']) < 1):
+                                meas['position_class'] = 'bottom'
+                                meas['bottom_width_line'] = bottom_width_line  # Store line for viz
+                                break
         else:
             print("\n  No down arrows found - no bottom widths classified")
 
@@ -388,25 +535,46 @@ def pair_measurements_by_proximity(classified_measurements, all_measurements, im
             extent_info = f" | V-lines span: {extent['top']:.0f} to {extent['bottom']:.0f} (height: {extent['span']:.0f}px)"
         print(f"    {h['text']} at ({h['x']:.0f}, {h['y']:.0f}){extent_info}")
 
-    # Analyze drawer configuration ONLY for bottom widths
-    print(f"\n=== ANALYZING DRAWER CONFIGURATION (BOTTOM WIDTHS ONLY) ===")
+    # Calculate extent and analyze drawer configuration ONLY for bottom widths
+    print(f"\n=== CALCULATING EXTENT AND ANALYZING DRAWER CONFIGURATION (BOTTOM WIDTHS ONLY) ===")
     for i, meas in enumerate(all_measurements):
         if i < len(classified_measurements):
             category = classified_measurements[i]
-            if category == 'width' and 'width_extent' in meas:
+            if category == 'width':
                 # Find corresponding width in widths list
                 for width in widths:
                     if width['x'] == meas['position'][0] and width['y'] == meas['position'][1]:
-                        # Only analyze if this is a classified bottom width
+                        # Only calculate extent and analyze if this is a classified bottom width
                         if width.get('position_class') == 'bottom':
-                            extent = meas['width_extent']
-                            drawer_config, edge_viz_data = analyze_drawer_above_width(width, extent, image, heights)
-                            width['drawer_config'] = drawer_config
-                            width['edge_viz_data'] = edge_viz_data
-                            # Store drawer_config and edge_viz_data back in all_measurements so viz can access it
-                            meas['drawer_config'] = drawer_config
-                            meas['edge_viz_data'] = edge_viz_data
-                            print(f"  {meas['text']} at ({meas['position'][0]:.0f}, {meas['position'][1]:.0f}): {drawer_config}")
+                            # Copy bottom_width_line from meas to width dict (if available)
+                            if 'bottom_width_line' in meas:
+                                width['bottom_width_line'] = meas['bottom_width_line']
+
+                            # Calculate extent for this bottom width
+                            print(f"  Calculating extent for bottom width: {meas['text']} at ({meas['position'][0]:.0f}, {meas['position'][1]:.0f})")
+                            from line_detection import extend_roi_and_get_full_extent
+                            extent = extend_roi_and_get_full_extent(image, meas, 'width', image_path)
+
+                            # Check if extent calculation succeeded or failed
+                            if extent and not extent.get('failed'):
+                                # Store extent in both width dict and meas dict
+                                width['width_extent'] = extent
+                                meas['width_extent'] = extent
+
+                                # Analyze drawer configuration using the calculated extent
+                                drawer_config, edge_viz_data = analyze_drawer_above_width(width, extent, image, heights)
+                                width['drawer_config'] = drawer_config
+                                width['edge_viz_data'] = edge_viz_data
+                                # Store drawer_config and edge_viz_data back in all_measurements so viz can access it
+                                meas['drawer_config'] = drawer_config
+                                meas['edge_viz_data'] = edge_viz_data
+                                print(f"  {meas['text']}: {drawer_config}")
+                            elif extent and extent.get('failed'):
+                                # Extent calculation failed, but store it anyway for visualization (has debug_rois)
+                                meas['width_extent'] = extent
+                                print(f"  WARNING: Failed to calculate extent for {meas['text']} (arrows not found), but stored debug_rois for visualization")
+                            else:
+                                print(f"  WARNING: Failed to calculate extent for {meas['text']}")
                         break
 
     # Pairing logic
@@ -435,32 +603,30 @@ def pair_measurements_by_proximity(classified_measurements, all_measurements, im
         print(f"    Is bottom width with multiple drawers: {is_bottom_multiple}")
 
         # Calculate scan area X range (before the loop)
-        x_padding = 24  # 1/4 inch at 96 DPI (same as visualization horizontal_extension)
-        scan_left = width_left - x_padding
-        scan_right = width_right + x_padding
-        print(f"    Scan area X range: {scan_left:.0f} to {scan_right:.0f} (extent + {x_padding}px padding each side)")
+        # Add padding ONLY to left side (where drawer heights are positioned)
+        x_padding_left = 120  # Padding on left side to capture drawer heights
+        scan_left = width_left - x_padding_left
+        scan_right = width_right  # No padding on right side
+        print(f"    Scan area X range: {scan_left:.0f} to {scan_right:.0f} (extent with {x_padding_left}px left padding)")
 
         # Find heights within the scan area X range (extent + horizontal padding)
         candidate_heights = []
         y_padding = 50  # Padding in pixels to account for skew
 
+        # Get extent line Y coordinates (use max as baseline since Y increases downward)
+        extent_left_y = extent.get('left_y', width['y'])
+        extent_right_y = extent.get('right_y', width['y'])
+        extent_baseline_y = max(extent_left_y, extent_right_y)  # Lowest point of extent line
+
         for height in heights:
-            # Check if ANY part of the height text overlaps with scan area
-            # Use bounds if available, otherwise fall back to center position
-            if height.get('bounds'):
-                # Bounds format: {'left': x, 'right': x, 'top': y, 'bottom': y}
-                height_left = height['bounds']['left']
-                height_right = height['bounds']['right']
-                # Check if height overlaps with scan area horizontally
-                overlaps = not (height_right < scan_left or height_left > scan_right)
-            else:
-                # Fall back to center position check
-                height_x = height['x']
-                overlaps = scan_left <= height_x <= scan_right
+            # Check if height CENTER is within scan area
+            # Use center position (X) regardless of bounds
+            height_x = height['x']
+            overlaps = scan_left <= height_x <= scan_right
 
             if overlaps:
-                # Only consider heights above the width (with padding for skew)
-                if height['y'] < width['y'] + y_padding:
+                # Only consider heights above the EXTENT LINE (not width text position)
+                if height['y'] < extent_baseline_y + y_padding:
                     candidate_heights.append(height)
                     print(f"      Candidate height: {height['text']} at ({height['x']:.0f}, {height['y']:.0f})")
 
@@ -523,6 +689,10 @@ def pair_measurements_by_proximity(classified_measurements, all_measurements, im
                         'width_is_finished': width.get('is_finished_size', False),
                         'height_is_finished': height.get('is_finished_size', False)
                     }
+
+                    # Add position_class if width has it (e.g., 'bottom')
+                    if 'position_class' in width:
+                        opening['position_class'] = width['position_class']
 
                     if 'notation' in height:
                         opening['notation'] = height['notation']
@@ -648,7 +818,7 @@ def pair_measurements_by_proximity(classified_measurements, all_measurements, im
         else:
             print(f"    No suitable width found - SKIP")
 
-    return openings, unpaired_heights_info
+    return openings, unpaired_heights_info, down_arrow_y_positions, bottom_width_line
 
 
 def analyze_drawer_above_width(width, extent, image, heights=None):
@@ -658,30 +828,29 @@ def analyze_drawer_above_width(width, extent, image, heights=None):
 
     Args:
         width: Width measurement dict with 'position_class' field
-        extent: Width extent dict with left/right bounds
+        extent: Width extent dict with left/right bounds and Y coordinates
         image: The source image
         heights: List of height measurements (optional, used to determine scan distance)
 
     Returns:
         String: drawer configuration with position class label
     """
-    from line_detection import detect_lines_in_roi
+    from line_detection import detect_lines_in_roi, extract_rotated_roi
     import cv2
 
     if image is None:
         return "unknown"
 
+    # Get extent line endpoints (with their Y coordinates)
     width_left = int(extent['left'])
     width_right = int(extent['right'])
+    width_left_y = int(extent.get('left_y', width['y']))  # Use extent Y if available
+    width_right_y = int(extent.get('right_y', width['y']))  # Otherwise fall back to width Y
     width_y = int(width['y'])
 
-    # Calculate the actual angle from the extent line coordinates
-    left_y = extent.get('left_y', width_y)
-    right_y = extent.get('right_y', width_y)
-    dx = width_right - width_left
-    dy = right_y - left_y
-    extent_angle = np.degrees(np.arctan2(dy, dx))
-    print(f"    Extent angle calculated: {extent_angle:.2f}° (from left_y={left_y}, right_y={right_y})")
+    # Use the angle from the extent dict (calculated from h_lines during classification)
+    extent_angle = extent.get('angle', 0)
+    print(f"    Extent angle from dict: {extent_angle:.2f}°")
 
     # Determine scan height based on position class
     # Top widths: 5/8" = 60px at 96 DPI
@@ -719,44 +888,197 @@ def analyze_drawer_above_width(width, extent, image, heights=None):
 
         class_label = "bottom width"
 
-    # Define ROI above the width measurement
-    # Start 1/8" (12px) higher than the width measurement
-    # Horizontally: use the width extent (left to right of dimension line)
+    # Calculate angled parallelogram scan area
+    # Bottom edge: Extent line offset 12px above width measurement
+    # Top edge: Parallel line at smallest height Y position (for bottom widths) or scan_distance_px above (for top widths)
     offset_from_width = 12  # 1/8 inch at 96 DPI
-    roi_x1 = width_left
-    roi_x2 = width_right
-    roi_y2 = width_y - offset_from_width  # Start 1/8" above the width measurement
-    roi_y1 = max(0, roi_y2 - scan_distance_px)  # Scan distance above that point
 
-    # Ensure ROI is within image bounds
-    roi_x1 = max(0, roi_x1)
-    roi_x2 = min(image.shape[1], roi_x2)
-    roi_y1 = max(0, roi_y1)
-    roi_y2 = min(image.shape[0], roi_y2)
+    # Bottom edge corners (12px above the extent line endpoints)
+    bottom_left_x = width_left
+    bottom_left_y = width_left_y - offset_from_width
+    bottom_right_x = width_right
+    bottom_right_y = width_right_y - offset_from_width
 
-    # Extract ROI
-    roi = image[roi_y1:roi_y2, roi_x1:roi_x2]
+    # Get bottom width reference line if available (for bottom widths only)
+    bottom_width_line = width.get('bottom_width_line', None)
+
+    # Initialize offset reference line coordinates (will be retrieved from bottom_width_line if available)
+    offset_ref_x1 = None
+    offset_ref_y1 = None
+    offset_ref_x2 = None
+    offset_ref_y2 = None
+
+    # Use SHARED offset reference line from bottom_width_line (calculated once in pair_measurements_by_proximity)
+    if position_class == 'bottom' and bottom_width_line is not None:
+        # Check if shared offset reference line exists
+        if 'offset_reference_line' in bottom_width_line:
+            # Retrieve the SHARED offset reference line (already calculated)
+            offset_line = bottom_width_line['offset_reference_line']
+            offset_ref_x1, offset_ref_y1 = offset_line['start']
+            offset_ref_x2, offset_ref_y2 = offset_line['end']
+
+            # Get bottom width reference line endpoints for logging
+            ref_x1, ref_y1 = bottom_width_line['start']
+            ref_x2, ref_y2 = bottom_width_line['end']
+
+            print(f"    Using SHARED offset reference line:")
+            print(f"      Bottom width reference: ({ref_x1}, {ref_y1}) to ({ref_x2}, {ref_y2})")
+            print(f"      Offset reference: ({offset_ref_x1:.1f}, {offset_ref_y1:.1f}) to ({offset_ref_x2:.1f}, {offset_ref_y2:.1f})")
+
+            # Now find where VERTICAL lines from extent endpoints intersect the offset reference line
+            # For trapezoid with vertical left/right sides:
+            # - Shoot vertical line UP from bottom-left corner
+            # - Shoot vertical line UP from bottom-right corner
+            # - Find where these vertical lines intersect the offset reference line
+
+            # Vertical line direction (pointing UP)
+            vertical_dir_x = 0
+            vertical_dir_y = -1  # Negative Y is up
+
+            # Line-line intersection:
+            # Line 1 (vertical from left): P = (bottom_left_x, bottom_left_y) + t * (0, -1)
+            # Line 2 (offset ref): Q = (offset_ref_x1, offset_ref_y1) + s * (offset_ref_x2 - offset_ref_x1, offset_ref_y2 - offset_ref_y1)
+
+            # Solve for intersection
+            def line_intersection(p1, d1, p2, d2):
+                """Find intersection of two lines defined by point + direction.
+                p1, d1: point and direction of line 1
+                p2, d2: point and direction of line 2
+                Returns intersection point or None if parallel
+                """
+                # Using parametric form:
+                # p1 + t*d1 = p2 + s*d2
+                # Solve: t*d1 - s*d2 = p2 - p1
+
+                det = d1[0] * d2[1] - d1[1] * d2[0]
+                if abs(det) < 1e-10:
+                    return None  # Lines are parallel
+
+                dp = (p2[0] - p1[0], p2[1] - p1[1])
+                t = (dp[0] * d2[1] - dp[1] * d2[0]) / det
+
+                # Calculate intersection point
+                intersection = (p1[0] + t * d1[0], p1[1] + t * d1[1])
+                return intersection
+
+            # Calculate left intersection (vertical line UP from bottom-left)
+            left_extent_point = (bottom_left_x, bottom_left_y)
+            left_extent_dir = (vertical_dir_x, vertical_dir_y)
+            offset_ref_point = (offset_ref_x1, offset_ref_y1)
+            offset_ref_dir = (offset_ref_x2 - offset_ref_x1, offset_ref_y2 - offset_ref_y1)
+
+            left_intersection = line_intersection(left_extent_point, left_extent_dir, offset_ref_point, offset_ref_dir)
+
+            # Calculate right intersection (vertical line UP from bottom-right)
+            right_extent_point = (bottom_right_x, bottom_right_y)
+            right_extent_dir = (vertical_dir_x, vertical_dir_y)
+
+            right_intersection = line_intersection(right_extent_point, right_extent_dir, offset_ref_point, offset_ref_dir)
+
+            if left_intersection and right_intersection:
+                top_left_x, top_left_y = left_intersection
+                top_right_x, top_right_y = right_intersection
+                print(f"    Trapezoid top edge from extent/offset-ref intersections:")
+                print(f"      Left intersection: ({top_left_x:.1f}, {top_left_y:.1f})")
+                print(f"      Right intersection: ({top_right_x:.1f}, {top_right_y:.1f})")
+            else:
+                # Fallback: use horizontal line at smallest_height_y
+                print(f"    WARNING: Could not calculate intersections, falling back to horizontal line")
+                top_edge_y = smallest_height_y if smallest_height_y else (bottom_left_y - scan_distance_px)
+                dy_extent = bottom_right_y - bottom_left_y
+                top_left_x = bottom_left_x
+                top_left_y = top_edge_y
+                top_right_x = bottom_right_x
+                top_right_y = top_edge_y + dy_extent
+        else:
+            # Fallback: reference line is a point
+            print(f"    WARNING: Reference line has zero length, falling back to horizontal line")
+            top_edge_y = smallest_height_y if smallest_height_y else (bottom_left_y - scan_distance_px)
+            dy_extent = bottom_right_y - bottom_left_y
+            top_left_x = bottom_left_x
+            top_left_y = top_edge_y
+            top_right_x = bottom_right_x
+            top_right_y = top_edge_y + dy_extent
+    else:
+        # OLD APPROACH: For top widths or when no bottom width reference line available
+        # Calculate top edge Y position
+        if position_class == 'bottom' and smallest_height_y:
+            # For bottom widths: use smallest height Y as target
+            top_edge_y = smallest_height_y
+        else:
+            # For top widths: use scan_distance_px above bottom edge
+            # Use the average Y of bottom edge
+            avg_bottom_y = (bottom_left_y + bottom_right_y) / 2
+            top_edge_y = avg_bottom_y - scan_distance_px
+
+        # Calculate top edge corners to create trapezoid with parallel top/bottom edges
+        # Keep X coordinates same (vertical left/right sides), adjust Y to maintain parallel slope
+
+        # Calculate the Y difference across the extent line (this maintains the angle)
+        dy_extent = bottom_right_y - bottom_left_y
+
+        # Top edge: same X positions as bottom edge, Y offset to maintain parallel angle
+        top_left_x = bottom_left_x
+        top_left_y = top_edge_y
+        top_right_x = bottom_right_x
+        top_right_y = top_edge_y + dy_extent  # Maintains same slope as extent line
+
+    # Define trapezoid corners (clockwise from top-left)
+    # Top and bottom edges are parallel (at extent angle), left and right edges are vertical
+    trapezoid_corners = np.array([
+        [top_left_x, top_left_y],       # Top-left
+        [top_right_x, top_right_y],     # Top-right
+        [bottom_right_x, bottom_right_y],  # Bottom-right
+        [bottom_left_x, bottom_left_y]     # Bottom-left
+    ], dtype=np.float32)
+
+    print(f"    Trapezoid corners:")
+    print(f"      Top-left: ({top_left_x:.1f}, {top_left_y:.1f})")
+    print(f"      Top-right: ({top_right_x:.1f}, {top_right_y:.1f})")
+    print(f"      Bottom-right: ({bottom_right_x:.1f}, {bottom_right_y:.1f})")
+    print(f"      Bottom-left: ({bottom_left_x:.1f}, {bottom_left_y:.1f})")
+
+    # Calculate dimensions of the straightened ROI
+    roi_width = int(np.sqrt((top_right_x - top_left_x)**2 + (top_right_y - top_left_y)**2))
+    # For trapezoid with vertical sides, height is the vertical distance (same X coordinates)
+    roi_height = int(abs(bottom_left_y - top_left_y))
+
+    # Define destination rectangle (straightened trapezoid)
+    dst_corners = np.array([
+        [0, 0],                      # Top-left
+        [roi_width, 0],              # Top-right
+        [roi_width, roi_height],     # Bottom-right
+        [0, roi_height]              # Bottom-left
+    ], dtype=np.float32)
+
+    # Get perspective transform matrix
+    M = cv2.getPerspectiveTransform(trapezoid_corners, dst_corners)
+    # Get inverse transform (to map ROI coords back to image coords)
+    M_inv = cv2.getPerspectiveTransform(dst_corners, trapezoid_corners)
+
+    # Extract and straighten the trapezoid ROI
+    roi = cv2.warpPerspective(image, M, (roi_width, roi_height))
+
+    # Store trapezoid corners and inverse matrix for visualization
+    roi_parallelogram = trapezoid_corners  # Keep field name for backward compatibility
+    inverse_matrix = M_inv
 
     if roi.size == 0:
         return f"{class_label}: unknown"
 
-    # Use edge detection to find horizontal edges
+    # Use edge detection to find horizontal edges in the straightened ROI
     # Convert to grayscale
     gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
 
     # Apply Canny edge detection
     edges = cv2.Canny(gray, 50, 150)
 
-    # Find horizontal edges by scanning with dynamic row height based on extent angle
-    # Calculate how many pixels tall we need to scan to capture an angled edge
+    # Find horizontal edges by scanning rows
+    # Since ROI is now straightened (horizontal), we can use simple row scanning
     roi_height, roi_width = edges.shape
+    scan_row_height = 50  # Fixed row height since ROI is straightened
 
-    # Calculate vertical rise across the ROI width at this angle
-    vertical_rise = abs(np.tan(np.radians(extent_angle)) * roi_width)
-    # Row height should be at least the vertical rise, minimum 1px, maximum 50px
-    scan_row_height = max(1, min(50, int(vertical_rise)))
-
-    print(f"    Extent angle {extent_angle:.2f}° → scan row height: {scan_row_height}px (vertical rise: {vertical_rise:.1f}px across {roi_width}px width)")
+    print(f"    Straightened ROI size: {roi_width}px × {roi_height}px, scanning with {scan_row_height}px bands")
 
     horizontal_edge_rows = []
 
@@ -765,14 +1087,12 @@ def analyze_drawer_above_width(width, extent, image, heights=None):
     for y in range(0, roi_height, scan_row_height):
         y_end = min(y + scan_row_height, roi_height)
         # Count edge pixels in this row band
-        edge_count = np.sum(edges[y:y_end, :] > 0)
+        edge_count_in_band = np.sum(edges[y:y_end, :] > 0)
         total_pixels = (y_end - y) * roi_width
-        edge_percentage = edge_count / total_pixels if total_pixels > 0 else 0
+        edge_percentage = edge_count_in_band / total_pixels if total_pixels > 0 else 0
         edge_percentages.append(edge_percentage)
 
-        # Lower threshold for taller bands (shelf edges are thin, maybe 2-3px)
-        # For a 3px thick edge across full width in a 36px tall band:
-        # 3 × 370 = 1110 pixels out of 13,320 total = 8.3%
+        # Lower threshold for detecting drawer edges
         threshold = 0.015  # 1.5% threshold
         if edge_percentage > threshold:
             horizontal_edge_rows.append(y + (y_end - y) // 2)  # Use middle of the band
@@ -781,30 +1101,58 @@ def analyze_drawer_above_width(width, extent, image, heights=None):
     if edge_percentages:
         print(f"    Edge % range: min={min(edge_percentages)*100:.2f}%, max={max(edge_percentages)*100:.2f}%, avg={np.mean(edge_percentages)*100:.2f}%")
 
-    print(f"    Found {len(horizontal_edge_rows)} row bands with >{threshold*100:.0f}% edge pixels (using {scan_row_height}px tall bands)")
+    print(f"    Found {len(horizontal_edge_rows)} row bands with >{threshold*100:.0f}% edge pixels")
 
     # Cluster nearby rows (within 20 pixels) into single edges
     edge_count = 0
-    clustered_edges = []  # Store the Y positions of clustered edges
+    clustered_edges_roi = []  # Store Y positions in ROI coordinates
     if horizontal_edge_rows:
         edge_count = 1
         cluster_start = horizontal_edge_rows[0]
         for i in range(1, len(horizontal_edge_rows)):
-            if horizontal_edge_rows[i] - horizontal_edge_rows[i-1] > 20:  # Changed from 10 to 20
+            if horizontal_edge_rows[i] - horizontal_edge_rows[i-1] > 20:
                 # Save the middle of the previous cluster
-                clustered_edges.append((cluster_start + horizontal_edge_rows[i-1]) // 2)
+                clustered_edges_roi.append((cluster_start + horizontal_edge_rows[i-1]) // 2)
                 edge_count += 1
                 cluster_start = horizontal_edge_rows[i]
         # Save the last cluster
-        clustered_edges.append((cluster_start + horizontal_edge_rows[-1]) // 2)
+        clustered_edges_roi.append((cluster_start + horizontal_edge_rows[-1]) // 2)
 
-    scan_height = roi_y2 - roi_y1  # Height of scanned area
+    # Transform edge positions back to original image coordinates
+    # Each edge is a horizontal line in the straightened ROI
+    # We need to transform it back to an angled line in the original image
+    horizontal_edges_original = []
+    for edge_y_roi in clustered_edges_roi:
+        # Create points at left and right ends of edge in ROI coordinates
+        points_roi = np.array([
+            [[0, edge_y_roi]],
+            [[roi_width, edge_y_roi]]
+        ], dtype=np.float32)
 
-    # Store edge visualization data
+        # Transform back to original image coordinates using perspective transform
+        points_orig = cv2.perspectiveTransform(points_roi, inverse_matrix)
+
+        # Extract coordinates
+        left_x, left_y = points_orig[0][0]
+        right_x, right_y = points_orig[1][0]
+
+        # Store as line endpoints
+        horizontal_edges_original.append((
+            int(left_x), int(left_y),
+            int(right_x), int(right_y)
+        ))
+
+    # Calculate scan height (vertical distance of parallelogram)
+    scan_height = int(abs(bottom_left_y - top_left_y))
+
+    # Store edge visualization data with parallelogram corners
     edge_viz_data = {
-        'roi_bounds': (roi_x1, roi_y1, roi_x2, roi_y2),
-        'horizontal_edges': [(roi_x1, roi_y1 + y, roi_x2, roi_y1 + y) for y in clustered_edges]
+        'roi_parallelogram': roi_parallelogram.tolist(),  # 4 corners of parallelogram
+        'horizontal_edges': horizontal_edges_original  # List of (x1, y1, x2, y2) tuples
     }
+
+    # NOTE: Offset reference line is NOT stored here because it's shared across all bottom widths
+    # It will be drawn once from bottom_width_line['offset_reference_line'] in visualization
 
     # Determine drawer configuration based on edge count
     if edge_count <= 5:
