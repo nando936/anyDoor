@@ -9,14 +9,20 @@ import numpy as np
 import base64
 import requests
 import re
+import os
 from measurement_config import (
     ROOM_PATTERNS, EXCLUDE_PATTERNS, OVERLAY_PATTERN, QUANTITY_NOTATION_PATTERN, GROUPING_CONFIG
 )
-from image_preprocessing import apply_hsv_preprocessing, find_opencv_supplemental_regions
+from image_preprocessing import apply_hsv_preprocessing, find_opencv_supplemental_regions, find_digit_supplemental_regions
 
 
-def find_room_and_overlay(annotations):
-    """Extract room name and overlay info from annotations"""
+def find_room_and_overlay(annotations, zoom_factor=1.0):
+    """Extract room name and overlay info from annotations
+
+    Args:
+        annotations: Text annotations from Vision API
+        zoom_factor: Factor to divide coordinates by to get original scale
+    """
     room_name = ""
     overlay_info = ""
 
@@ -42,8 +48,8 @@ def find_room_and_overlay(annotations):
                 text = ann['description']
                 if 'OL' in text.upper():
                     vertices = ann['boundingPoly']['vertices']
-                    ol_x = sum(v.get('x', 0) for v in vertices) / 4
-                    ol_y = sum(v.get('y', 0) for v in vertices) / 4
+                    ol_x = sum(v.get('x', 0) for v in vertices) / 4 / zoom_factor
+                    ol_y = sum(v.get('y', 0) for v in vertices) / 4 / zoom_factor
                     ol_position = (ol_x, ol_y)
                     exclude_items.append({'text': text, 'x': ol_x, 'y': ol_y})
                     break
@@ -56,8 +62,8 @@ def find_room_and_overlay(annotations):
                     # Check if it's a fraction (contains /)
                     if '/' in text and 'OL' not in text.upper():
                         vertices = ann['boundingPoly']['vertices']
-                        x = sum(v.get('x', 0) for v in vertices) / 4
-                        y = sum(v.get('y', 0) for v in vertices) / 4
+                        x = sum(v.get('x', 0) for v in vertices) / 4 / zoom_factor
+                        y = sum(v.get('y', 0) for v in vertices) / 4 / zoom_factor
                         # Calculate distance to OL
                         distance = ((x - ol_position[0])**2 + (y - ol_position[1])**2)**0.5
                         if distance < proximity_threshold:
@@ -92,8 +98,8 @@ def find_room_and_overlay(annotations):
 
                     if should_exclude:
                         vertices = ann['boundingPoly']['vertices']
-                        x = sum(v.get('x', 0) for v in vertices) / 4
-                        y = sum(v.get('y', 0) for v in vertices) / 4
+                        x = sum(v.get('x', 0) for v in vertices) / 4 / zoom_factor
+                        y = sum(v.get('y', 0) for v in vertices) / 4 / zoom_factor
                         exclude_items.append({'text': text, 'x': x, 'y': y})
                 break
 
@@ -109,8 +115,8 @@ def find_room_and_overlay(annotations):
                 for ann in annotations[1:]:
                     if ann['description'].lower() == part.lower():
                         vertices = ann['boundingPoly']['vertices']
-                        x = sum(v.get('x', 0) for v in vertices) / 4
-                        y = sum(v.get('y', 0) for v in vertices) / 4
+                        x = sum(v.get('x', 0) for v in vertices) / 4 / zoom_factor
+                        y = sum(v.get('y', 0) for v in vertices) / 4 / zoom_factor
                         exclude_items.append({'text': ann['description'], 'x': x, 'y': y})
 
         # Also exclude common non-measurement text
@@ -121,8 +127,8 @@ def find_room_and_overlay(annotations):
             should_exclude = text in EXCLUDE_PATTERNS or any(word in EXCLUDE_PATTERNS for word in words)
             if should_exclude:
                 vertices = ann['boundingPoly']['vertices']
-                x = sum(v.get('x', 0) for v in vertices) / 4
-                y = sum(v.get('y', 0) for v in vertices) / 4
+                x = sum(v.get('x', 0) for v in vertices) / 4 / zoom_factor
+                y = sum(v.get('y', 0) for v in vertices) / 4 / zoom_factor
                 exclude_items.append({'text': ann['description'], 'x': x, 'y': y})
 
     return room_name, overlay_info, exclude_items
@@ -158,12 +164,27 @@ def find_interest_areas(image_path, api_key):
     if use_hsv:
         processed_image = apply_hsv_preprocessing(image)
         print("Using HSV preprocessing")
+
+        # Save preprocessed image for debugging
+        base_name = os.path.splitext(os.path.basename(image_path))[0]
+        output_dir = os.path.dirname(os.path.abspath(image_path))
+        preprocessed_path = os.path.join(output_dir, f"{base_name}_phase1_preprocessed.png")
+        cv2.imwrite(preprocessed_path, processed_image)
+        print(f"  [SAVED] Phase 1 preprocessed image: {preprocessed_path}")
     else:
         processed_image = image
         print("Using original image (no HSV preprocessing)")
 
-    # Encode for Vision API
-    _, buffer = cv2.imencode('.png', processed_image)
+    # Apply 2x zoom for better Vision API detection
+    zoom_factor = 2.0
+    zoomed_image = cv2.resize(processed_image, None, fx=zoom_factor, fy=zoom_factor,
+                              interpolation=cv2.INTER_CUBIC)
+    print(f"Applied {zoom_factor}x zoom for Vision API detection")
+    print(f"  Original size: {processed_image.shape[1]}x{processed_image.shape[0]}")
+    print(f"  Zoomed size: {zoomed_image.shape[1]}x{zoomed_image.shape[0]}")
+
+    # Encode zoomed image for Vision API
+    _, buffer = cv2.imencode('.png', zoomed_image)
     content = base64.b64encode(buffer).decode('utf-8')
 
     # Run initial OCR
@@ -190,7 +211,7 @@ def find_interest_areas(image_path, api_key):
         return [], "", ""
 
     # Extract room and overlay info first
-    room_name, overlay_info, exclude_items = find_room_and_overlay(annotations)
+    room_name, overlay_info, exclude_items = find_room_and_overlay(annotations, zoom_factor)
 
     if room_name:
         print(f"Room name: {room_name}")
@@ -200,11 +221,12 @@ def find_interest_areas(image_path, api_key):
         print(f"Excluding {len(exclude_items)} non-measurement items")
 
     # Collect ALL Vision API detections with bounding boxes for OpenCV to exclude
+    # Convert coordinates back to original scale by dividing by zoom_factor
     all_vision_detections = []
     for ann in annotations[1:]:  # Skip full text annotation
         vertices = ann['boundingPoly']['vertices']
-        x_coords = [v.get('x', 0) for v in vertices]
-        y_coords = [v.get('y', 0) for v in vertices]
+        x_coords = [v.get('x', 0) / zoom_factor for v in vertices]
+        y_coords = [v.get('y', 0) / zoom_factor for v in vertices]
 
         all_vision_detections.append({
             'text': ann['description'],
@@ -217,6 +239,7 @@ def find_interest_areas(image_path, api_key):
         })
 
     # Get all text items with numbers (but exclude room/overlay items)
+    # Convert coordinates back to original scale by dividing by zoom_factor
     text_items = []
     for ann in annotations[1:]:  # Skip full text
         text = ann['description']
@@ -235,7 +258,7 @@ def find_interest_areas(image_path, api_key):
                 removed_right = len(original_text) - len(original_text.rstrip('-'))
                 total_chars = len(original_text)
 
-                # Get original bounds
+                # Get original bounds (from zoomed image)
                 x_coords = [v.get('x', 0) for v in vertices]
                 y_coords = [v.get('y', 0) for v in vertices]
                 left = min(x_coords)
@@ -255,7 +278,13 @@ def find_interest_areas(image_path, api_key):
                     char_width = width / total_chars
                     right -= char_width * removed_right
 
-                # Create adjusted vertices
+                # Convert to original scale
+                left /= zoom_factor
+                right /= zoom_factor
+                top /= zoom_factor
+                bottom /= zoom_factor
+
+                # Create adjusted vertices in original scale
                 adjusted_vertices = [
                     {'x': left, 'y': top},      # Top-left
                     {'x': right, 'y': top},     # Top-right
@@ -270,9 +299,18 @@ def find_interest_areas(image_path, api_key):
                 x = (left + right) / 2
                 y = (top + bottom) / 2
             else:
-                # No adjustment needed, use original center
-                x = sum(v.get('x', 0) for v in vertices) / 4
-                y = sum(v.get('y', 0) for v in vertices) / 4
+                # No adjustment needed, convert vertices to original scale
+                x = sum(v.get('x', 0) for v in vertices) / 4 / zoom_factor
+                y = sum(v.get('y', 0) for v in vertices) / 4 / zoom_factor
+
+                # Convert vertices to original scale
+                vertices = [
+                    {
+                        'x': v.get('x', 0) / zoom_factor,
+                        'y': v.get('y', 0) / zoom_factor
+                    }
+                    for v in vertices
+                ]
 
             # Check if this item should be excluded
             should_exclude = False
@@ -348,6 +386,29 @@ def find_interest_areas(image_path, api_key):
         print(f"  Total text items after OpenCV: {len(text_items)}")
     else:
         print("  No additional regions found by OpenCV")
+
+    # === ADD DIGIT DETECTION (PASS 3) ===
+    print("\nSupplemental digit detection...")
+
+    # Find small digits that Vision API and OpenCV missed
+    digit_regions = find_digit_supplemental_regions(processed_image, all_vision_detections)
+
+    if digit_regions:
+        print(f"  Digit detection found {len(digit_regions)} additional '9' shapes")
+
+        # Add digit regions to text_items
+        for region in digit_regions:
+            text_items.append({
+                'text': region['text'],
+                'x': region['center'][0],
+                'y': region['center'][1],
+                'vertices': None,  # No vertices for digit regions
+                'source': 'digit_detection'  # Mark source
+            })
+
+        print(f"  Total text items after digit detection: {len(text_items)}")
+    else:
+        print("  No additional digits found")
 
     # Don't save separate visualization - it will be included in main test_viz
 
@@ -495,16 +556,20 @@ def merge_close_centers(interest_areas, threshold=None):
             # Y should be tight (max 45px) since text on same line should have similar Y
             # X can be more relaxed (use full threshold)
             if x_dist < threshold and y_dist < 45:
-                # Check if merging would create a valid measurement
-                proposed_texts = merged_area['all_texts'] + other['texts']
-                if is_valid_measurement(proposed_texts):
-                    merged_area['centers'].append(other['center'])
-                    merged_area['all_bounds'].append(other['bounds'])
-                    merged_area['all_texts'].extend(other['texts'])
-                    used.add(j)
-                    print(f"  Merging areas at {area['center']} and {other['center']} (x_dist={x_dist:.1f}, y_dist={y_dist:.1f})")
-                else:
-                    print(f"  SKIP merging {area['center']} and {other['center']} - would create invalid measurement: {proposed_texts}")
+                # DISABLED: Phase 1 should only find areas of interest, not validate measurements
+                # Validation happens in Phase 2 (zoom verification)
+                # proposed_texts = merged_area['all_texts'] + other['texts']
+                # if is_valid_measurement(proposed_texts):
+
+                # Always merge if distance is close enough
+                merged_area['centers'].append(other['center'])
+                merged_area['all_bounds'].append(other['bounds'])
+                merged_area['all_texts'].extend(other['texts'])
+                used.add(j)
+                print(f"  Merging areas at {area['center']} and {other['center']} (x_dist={x_dist:.1f}, y_dist={y_dist:.1f})")
+
+                # else:
+                #     print(f"  SKIP merging {area['center']} and {other['center']} - would create invalid measurement: {proposed_texts}")
 
         # Calculate merged center and bounds
         avg_x = sum(c[0] for c in merged_area['centers']) / len(merged_area['centers'])

@@ -21,7 +21,7 @@ GROUPING_CONFIG = {
 ZOOM_CONFIG = {
     'padding': 30,           # Vertical padding (top/bottom)
     'padding_horizontal': 50, # Horizontal padding (left/right) - wider to capture full characters
-    'zoom_factor': 3         # Magnification factor
+    'zoom_factor': 1         # Magnification factor (Phase 2 verification)
 }
 
 # Measurement validation
