@@ -150,13 +150,26 @@ def detect_lines_in_roi(roi_image, roi_x_offset, roi_y_offset, inverse_transform
     return []
 
 
-def find_lines_near_measurement(image, measurement, save_roi_debug=False):
+def find_lines_near_measurement(image, measurement, save_roi_debug=False, image_path=None):
     """Find lines near a specific measurement position that match the text color"""
+    import os
+
     x = int(measurement['position'][0])
     y = int(measurement['position'][1])
 
     # Enable debug for troubleshooting
     DEBUG_MODE = True  # Enable to see width calculation and H-ROI positioning details
+
+    # Setup for classification ROI debug image saving
+    output_dir = None
+    base_name = None
+    m_id = None
+    m_text = None
+    if image_path and save_roi_debug:
+        output_dir = os.path.dirname(os.path.abspath(image_path))
+        base_name = os.path.splitext(os.path.basename(image_path))[0]
+        m_id = measurement.get('id', 'unknown')
+        m_text = measurement['text'].replace(' ', '').replace('/', '-').replace('*', '').replace('$', '')
 
     # Use bounds if available
     if 'bounds' in measurement:
@@ -307,10 +320,16 @@ def find_lines_near_measurement(image, measurement, save_roi_debug=False):
         for i in range(len(lines)):
             x1, y1, x2, y2 = lines[i][0]
             angle1 = np.degrees(np.arctan2(y2 - y1, x2 - x1))
+            # Normalize to 0-360° range (matching working arrow detection code)
+            if angle1 < 0:
+                angle1 += 360
 
             for j in range(i + 1, len(lines)):
                 x3, y3, x4, y4 = lines[j][0]
                 angle2 = np.degrees(np.arctan2(y4 - y3, x4 - x3))
+                # Normalize to 0-360° range (matching working arrow detection code)
+                if angle2 < 0:
+                    angle2 += 360
 
                 # Check if lines have opposite angles (forming a V or ^ shape)
                 angle_diff = abs(angle1 + angle2)  # If one is positive and one negative, sum is small
@@ -320,60 +339,58 @@ def find_lines_near_measurement(image, measurement, save_roi_debug=False):
                     if DEBUG_MODE and i == 0 and j == 1:
                         print(f"        First pair angles: {angle1:.1f}° and {angle2:.1f}°, diff={angle_diff:.1f}")
 
-                    # For up arrow, look for lines that converge upward (like ^)
-                    # One line should point up-right (+20° to +70°)
-                    # One line should point up-left (-20° to -70°)
-                    # Reject down arrows (angles near ±120° to ±150°)
+                    # For up arrow, look for ^ shape pointing upward
+                    # Inverse of DOWN arrows (which use 20-88° and 285-360°):
+                    # Right leg: 92-160° (up-right from apex)
+                    # Left leg: 200-268° (up-left from apex)
 
-                    # Check if one angle is positive (up-right) and one is negative (up-left)
-                    if (angle1 > 0 and angle2 < 0) or (angle1 < 0 and angle2 > 0):
-                        # Both should be in the "upward pointing" range
-                        abs_angle1 = abs(angle1)
-                        abs_angle2 = abs(angle2)
+                    # Check if we have both legs of a ^
+                    has_right_leg_up = (92 <= angle1 <= 160) or (92 <= angle2 <= 160)
+                    has_left_leg_up = (200 <= angle1 <= 268) or (200 <= angle2 <= 268)
 
-                        # UP arrows: angles between 20-70° (not near 90° vertical or 0° horizontal)
-                        # DOWN arrows: angles between 110-150° (reject these)
-                        is_up1 = 20 <= abs_angle1 <= 70
-                        is_up2 = 20 <= abs_angle2 <= 70
+                    if has_right_leg_up and has_left_leg_up:
+                        # Both legs present - valid UP arrow
+                        converging_pairs += 1
+                        if DEBUG_MODE:
+                            print(f"        Found UP arrow: angles {angle1:.1f}° and {angle2:.1f}° (right leg 92-160°, left leg 200-268°)")
 
-                        if is_up1 and is_up2:
-                            # Both lines point upward - valid UP arrow
-                            converging_pairs += 1
-                            if DEBUG_MODE:
-                                print(f"        Found UP arrow pair: {angle1:.1f}° and {angle2:.1f}°")
-                        elif (abs_angle1 > 110) and (abs_angle2 > 110):
-                            # Found DOWN arrow in UP ROI - wrong direction (both lines must be downward)
-                            wrong_direction_pairs += 1
-                            if DEBUG_MODE:
-                                print(f"        Rejected DOWN arrow in UP ROI: {angle1:.1f}° and {angle2:.1f}°")
+                    # Check for wrong-direction DOWN arrow in UP ROI
+                    # DOWN arrows: right leg 20-88°, left leg 285-360°
+                    has_right_leg = (20 <= angle1 <= 88) or (20 <= angle2 <= 88)
+                    has_left_leg = (285 <= angle1 <= 360) or (285 <= angle2 <= 360)
+
+                    if has_right_leg and has_left_leg:
+                        # Found DOWN arrow in UP ROI - wrong direction
+                        wrong_direction_pairs += 1
+                        if DEBUG_MODE:
+                            print(f"        Rejected DOWN arrow in UP ROI: {angle1:.1f}° and {angle2:.1f}°")
 
                 elif direction == 'down':
-                    # For down arrow, look for lines that converge downward (like v)
-                    # One line should point down-right (+110° to +160°)
-                    # One line should point down-left (-110° to -160°)
-                    # Reject up arrows (angles near ±20° to ±70°)
+                    # For down arrow, look for V shape pointing downward (like v)
+                    # Based on working code from measurement_pairing_v2.py:
+                    # Right leg: 20-88° (down-right from apex)
+                    # Left leg: 285-360° (down-left from apex)
 
-                    # Check if one angle is positive (down-right) and one is negative (down-left)
-                    if (angle1 > 0 and angle2 < 0) or (angle1 < 0 and angle2 > 0):
-                        # Both should be in the "downward pointing" range
-                        abs_angle1 = abs(angle1)
-                        abs_angle2 = abs(angle2)
+                    # Check if we have both legs of a V
+                    has_right_leg = (20 <= angle1 <= 88) or (20 <= angle2 <= 88)
+                    has_left_leg = (285 <= angle1 <= 360) or (285 <= angle2 <= 360)
 
-                        # DOWN arrows: angles between 110-160° (pointing downward)
-                        # UP arrows: angles between 20-70° (reject these)
-                        is_down1 = 110 <= abs_angle1 <= 160
-                        is_down2 = 110 <= abs_angle2 <= 160
+                    if has_right_leg and has_left_leg:
+                        # Both legs present - valid DOWN arrow
+                        converging_pairs += 1
+                        if DEBUG_MODE:
+                            print(f"        Found DOWN arrow: angles {angle1:.1f}° and {angle2:.1f}° (right leg 20-88°, left leg 285-360°)")
 
-                        if is_down1 and is_down2:
-                            # Both lines point downward - valid DOWN arrow
-                            converging_pairs += 1
-                            if DEBUG_MODE:
-                                print(f"        Found DOWN arrow pair: {angle1:.1f}° and {angle2:.1f}°")
-                        elif (20 <= abs_angle1 <= 70) and (20 <= abs_angle2 <= 70):
-                            # Found UP arrow in DOWN ROI - wrong direction (both lines must be upward)
-                            wrong_direction_pairs += 1
-                            if DEBUG_MODE:
-                                print(f"        Rejected UP arrow in DOWN ROI: {angle1:.1f}° and {angle2:.1f}°")
+                    # Check for wrong-direction UP arrow in DOWN ROI
+                    # UP arrows: right leg 92-160°, left leg 200-268°
+                    has_right_leg_up = (92 <= angle1 <= 160) or (92 <= angle2 <= 160)
+                    has_left_leg_up = (200 <= angle1 <= 268) or (200 <= angle2 <= 268)
+
+                    if has_right_leg_up and has_left_leg_up:
+                        # Found UP arrow in DOWN ROI - wrong direction
+                        wrong_direction_pairs += 1
+                        if DEBUG_MODE:
+                            print(f"        Rejected UP arrow in DOWN ROI: {angle1:.1f}° and {angle2:.1f}°")
 
                 elif direction == 'left':
                     # For left arrow, look for lines that converge leftward (like <)
@@ -429,6 +446,16 @@ def find_lines_near_measurement(image, measurement, save_roi_debug=False):
         left_h_lines = detect_lines_in_roi(h_left_roi, h_left_x1, h_left_y1, h_left_M_inv)
         print(f"      Left H-ROI: shape={h_left_roi.shape}, found {len(left_h_lines)} lines")
 
+        # Save debug image of left H-ROI with detected lines
+        if output_dir is not None:
+            debug_img_left = h_left_roi.copy()
+            # Draw detected lines on the ROI
+            for line in left_h_lines:
+                lx1, ly1, lx2, ly2 = line['roi_coords']
+                cv2.line(debug_img_left, (int(lx1), int(ly1)), (int(lx2), int(ly2)), (0, 255, 255), 2)
+            left_roi_path = f"{output_dir}/{base_name}_M{m_id}_{m_text}_left_hroi_class.png"
+            cv2.imwrite(left_roi_path, debug_img_left)
+
         # If no lines found, try arrow detection
         if not left_h_lines:
             has_left_arrow, _ = detect_arrow_in_roi(h_left_roi, 'left')  # Ignore wrong-direction for now
@@ -460,6 +487,16 @@ def find_lines_near_measurement(image, measurement, save_roi_debug=False):
 
         right_h_lines = detect_lines_in_roi(h_right_roi, h_right_x1, h_right_y1, h_right_M_inv)
         print(f"      Right H-ROI: shape={h_right_roi.shape}, found {len(right_h_lines)} lines")
+
+        # Save debug image of right H-ROI with detected lines
+        if output_dir is not None:
+            debug_img_right = h_right_roi.copy()
+            # Draw detected lines on the ROI
+            for line in right_h_lines:
+                lx1, ly1, lx2, ly2 = line['roi_coords']
+                cv2.line(debug_img_right, (int(lx1), int(ly1)), (int(lx2), int(ly2)), (0, 255, 255), 2)
+            right_roi_path = f"{output_dir}/{base_name}_M{m_id}_{m_text}_right_hroi_class.png"
+            cv2.imwrite(right_roi_path, debug_img_right)
 
         # If no lines found, try arrow detection
         if not right_h_lines:
@@ -547,6 +584,16 @@ def find_lines_near_measurement(image, measurement, save_roi_debug=False):
             print(f"      Top V-ROI: shape={v_top_roi.shape}, IGNORING v-lines (DOWN arrow detected)")
         else:
             print(f"      Top V-ROI: shape={v_top_roi.shape}, found {len(top_v_lines)} lines, up-arrow={has_up_arrow}")
+
+        # Save debug image of top V-ROI with detected lines
+        if output_dir is not None:
+            debug_img_top = v_top_roi.copy()
+            # Draw detected lines on the ROI
+            for line in top_v_lines:
+                lx1, ly1, lx2, ly2 = line['roi_coords']
+                cv2.line(debug_img_top, (int(lx1), int(ly1)), (int(lx2), int(ly2)), (0, 255, 255), 2)
+            top_roi_path = f"{output_dir}/{base_name}_M{m_id}_{m_text}_top_vroi_class.png"
+            cv2.imwrite(top_roi_path, debug_img_top)
     else:
         top_v_lines = []
         print(f"      Top V-ROI: Invalid bounds")
@@ -571,6 +618,16 @@ def find_lines_near_measurement(image, measurement, save_roi_debug=False):
             print(f"      Bottom V-ROI: shape={v_bottom_roi.shape}, IGNORING v-lines (UP arrow detected)")
         else:
             print(f"      Bottom V-ROI: shape={v_bottom_roi.shape}, found {len(bottom_v_lines)} lines, down-arrow={has_down_arrow}")
+
+        # Save debug image of bottom V-ROI with detected lines
+        if output_dir is not None:
+            debug_img_bottom = v_bottom_roi.copy()
+            # Draw detected lines on the ROI
+            for line in bottom_v_lines:
+                lx1, ly1, lx2, ly2 = line['roi_coords']
+                cv2.line(debug_img_bottom, (int(lx1), int(ly1)), (int(lx2), int(ly2)), (0, 255, 255), 2)
+            bottom_roi_path = f"{output_dir}/{base_name}_M{m_id}_{m_text}_bottom_vroi_class.png"
+            cv2.imwrite(bottom_roi_path, debug_img_bottom)
     else:
         bottom_v_lines = []
         print(f"      Bottom V-ROI: Invalid bounds")
@@ -988,7 +1045,7 @@ def find_lines_near_measurement(image, measurement, save_roi_debug=False):
     }
 
 
-def check_for_arrows_at_line_ends(roi_image, roi_x_offset, roi_y_offset, line_coords, direction):
+def check_for_arrows_at_line_ends(roi_image, roi_x_offset, roi_y_offset, line_coords, direction, inverse_transform=None):
     """
     Check if there are arrow indicators in the search area ROI.
 
@@ -997,6 +1054,7 @@ def check_for_arrows_at_line_ends(roi_image, roi_x_offset, roi_y_offset, line_co
         roi_x_offset, roi_y_offset: ROI offsets relative to full image
         line_coords: (not used, kept for compatibility)
         direction: 'left' or 'right' - which side we're searching
+        inverse_transform: Optional 3x3 perspective transform matrix for rotated ROIs
 
     Returns:
         (has_arrow, arrow_x): Tuple of (True if arrows found, X position of arrow tip in ROI coords)
@@ -1010,14 +1068,14 @@ def check_for_arrows_at_line_ends(roi_image, roi_x_offset, roi_y_offset, line_co
 
     if direction in ['left', 'right']:
         # Detect lines in the FULL ROI
-        lines = detect_lines_in_roi(roi_image, 0, 0) if roi_image.size > 0 else []
+        lines = detect_lines_in_roi(roi_image, roi_x_offset, roi_y_offset, inverse_transform) if roi_image.size > 0 else []
 
         # Need at least 2 lines to form an arrow
         if len(lines) < 2:
             return (False, None)
 
         # Check for converging line pairs (arrows)
-        # Look for lines with angles roughly opposite (90-170 degrees apart)
+        # For LEFT/RIGHT arrows, check that lines converge HORIZONTALLY, not vertically
         for i, line1 in enumerate(lines):
             lx1a, ly1a, lx2a, ly2a = line1['roi_coords']
             angle1 = np.degrees(np.arctan2(ly2a - ly1a, lx2a - lx1a))
@@ -1032,9 +1090,143 @@ def check_for_arrows_at_line_ends(roi_image, roi_x_offset, roi_y_offset, line_co
                 if angle_diff > 180:
                     angle_diff = 360 - angle_diff
 
-                # Lines should be roughly opposite (90-170 degrees apart)
-                if 90 < angle_diff < 170:
-                    # Found converging lines that form an arrow
+                # Lines should be converging (15-170 degrees apart)
+                # Broadened from 90-170 to catch LEFT/RIGHT arrows in rotated ROIs
+                if 15 < angle_diff < 170:
+                    # Check if this is a HORIZONTAL arrow (</>) or VERTICAL arrow (^/v)
+                    # by comparing deviation from horizontal vs vertical
+
+                    # For each line, calculate:
+                    # - Deviation from horizontal: min distance to 0° or 180°
+                    # - Deviation from vertical: distance to ±90°
+
+                    abs_angle1 = abs(angle1)
+                    abs_angle2 = abs(angle2)
+
+                    # Deviation from horizontal (0° or 180°)
+                    dev_horiz_1 = min(abs_angle1, abs(180 - abs_angle1))
+                    dev_horiz_2 = min(abs_angle2, abs(180 - abs_angle2))
+
+                    # Deviation from vertical (90° or -90°)
+                    dev_vert_1 = abs(abs_angle1 - 90)
+                    dev_vert_2 = abs(abs_angle2 - 90)
+
+                    # Check if EITHER line is very close to vertical (±90°)
+                    # True LEFT/RIGHT arrows have both lines at reasonable angles from horizontal
+                    # Vertical arrows (^ v) will have at least one line very close to ±90°
+                    line1_near_vertical = dev_vert_1 < 20  # Within 20° of ±90°
+                    line2_near_vertical = dev_vert_2 < 20  # Within 20° of ±90°
+
+                    if line1_near_vertical or line2_near_vertical:
+                        # At least one line is very close to vertical - this is a vertical arrow
+                        # Skip this pair when searching for horizontal arrows
+                        print(f"        [ARROW FILTER] Rejected near-vertical arrow: angles {angle1:.1f}° and {angle2:.1f}°")
+                        print(f"        [ARROW FILTER]   Line1: vert_dev={dev_vert_1:.1f}° → {'NEAR_VERT' if line1_near_vertical else 'OK'}")
+                        print(f"        [ARROW FILTER]   Line2: vert_dev={dev_vert_2:.1f}° → {'NEAR_VERT' if line2_near_vertical else 'OK'}")
+                        continue
+
+                    # === ARROW VALIDATION: Line Length and Convergence ===
+                    # Calculate line lengths
+                    length1 = np.sqrt((lx2a - lx1a)**2 + (ly2a - ly1a)**2)
+                    length2 = np.sqrt((lx2b - lx1b)**2 + (ly2b - ly1b)**2)
+
+                    # Filter 1: Minimum length (reject noise/text fragments)
+                    MIN_ARROW_LENGTH = 12  # pixels
+                    if length1 < MIN_ARROW_LENGTH or length2 < MIN_ARROW_LENGTH:
+                        print(f"        [ARROW FILTER] Rejected short lines: len1={length1:.1f}px, len2={length2:.1f}px (min={MIN_ARROW_LENGTH}px)")
+                        continue
+
+                    # Filter 2: Maximum length (reject long dimension lines)
+                    MAX_ARROW_LENGTH = 40  # pixels
+                    if length1 > MAX_ARROW_LENGTH or length2 > MAX_ARROW_LENGTH:
+                        print(f"        [ARROW FILTER] Rejected long lines: len1={length1:.1f}px, len2={length2:.1f}px (max={MAX_ARROW_LENGTH}px)")
+                        continue
+
+                    # Filter 3: Length ratio (both lines should be similar length)
+                    min_length = min(length1, length2)
+                    max_length = max(length1, length2)
+                    length_ratio = min_length / max_length if max_length > 0 else 0
+                    MIN_LENGTH_RATIO = 0.5  # Lines should be within 2x of each other
+                    if length_ratio < MIN_LENGTH_RATIO:
+                        print(f"        [ARROW FILTER] Rejected dissimilar lengths: len1={length1:.1f}px, len2={length2:.1f}px, ratio={length_ratio:.2f} (min={MIN_LENGTH_RATIO})")
+                        continue
+
+                    # Filter 4: Convergence distance (lines must meet at a point)
+                    # Calculate intersection point of the two lines
+                    dx1 = lx2a - lx1a
+                    dy1 = ly2a - ly1a
+                    dx2 = lx2b - lx1b
+                    dy2 = ly2b - ly1b
+
+                    # Check if lines are parallel (determinant near zero)
+                    det = dx1 * dy2 - dy1 * dx2
+                    if abs(det) < 0.01:
+                        # Lines are parallel or nearly parallel
+                        print(f"        [ARROW FILTER] Rejected parallel lines: angles {angle1:.1f}° and {angle2:.1f}°")
+                        continue
+
+                    # Calculate intersection point
+                    t = ((lx1b - lx1a) * dy2 - (ly1b - ly1a) * dx2) / det
+                    intersect_x = lx1a + t * dx1
+                    intersect_y = ly1a + t * dy1
+
+                    # Calculate distance from line endpoints to intersection (convergence distance)
+                    # For a true arrow, the endpoints should be close to the intersection
+                    d1a = np.sqrt((intersect_x - lx1a)**2 + (intersect_y - ly1a)**2)
+                    d1b = np.sqrt((intersect_x - lx2a)**2 + (intersect_y - ly2a)**2)
+                    d2a = np.sqrt((intersect_x - lx1b)**2 + (intersect_y - ly1b)**2)
+                    d2b = np.sqrt((intersect_x - lx2b)**2 + (intersect_y - ly2b)**2)
+
+                    # Use the minimum distance from each line (closest endpoint)
+                    conv_dist_1 = min(d1a, d1b)
+                    conv_dist_2 = min(d2a, d2b)
+                    conv_dist = max(conv_dist_1, conv_dist_2)  # Both lines should be close
+
+                    MAX_CONVERGENCE_DIST = 15  # pixels
+                    if conv_dist > MAX_CONVERGENCE_DIST:
+                        print(f"        [ARROW FILTER] Rejected non-converging lines: conv_dist={conv_dist:.1f}px (max={MAX_CONVERGENCE_DIST}px)")
+                        print(f"        [ARROW FILTER]   Line1 closest to intersection: {conv_dist_1:.1f}px")
+                        print(f"        [ARROW FILTER]   Line2 closest to intersection: {conv_dist_2:.1f}px")
+                        continue
+
+                    # Filter 5: Directional validation - ensure arrow points the correct way
+                    # Normalize angles to 0-360° range
+                    norm_angle1 = angle1 % 360
+                    if norm_angle1 < 0:
+                        norm_angle1 += 360
+                    norm_angle2 = angle2 % 360
+                    if norm_angle2 < 0:
+                        norm_angle2 += 360
+
+                    # Check if angles match expected arrow direction
+                    if direction == 'left':
+                        # LEFT arrow (<): requires top leg 120-165° and bottom leg 195-240°
+                        has_top_leg = (120 <= norm_angle1 <= 165) or (120 <= norm_angle2 <= 165)
+                        has_bottom_leg = (195 <= norm_angle1 <= 240) or (195 <= norm_angle2 <= 240)
+
+                        if not (has_top_leg and has_bottom_leg):
+                            print(f"        [ARROW FILTER] Rejected: angles {norm_angle1:.1f}° and {norm_angle2:.1f}° don't form LEFT arrow (<)")
+                            print(f"        [ARROW FILTER]   Need: top leg 120-165° AND bottom leg 195-240°")
+                            continue
+
+                    elif direction == 'right':
+                        # RIGHT arrow (>): requires top leg 300-345° or 0-45° and bottom leg 15-60°
+                        # Top leg can wrap around 0° (315° to 45° range)
+                        has_top_leg = (300 <= norm_angle1 <= 345) or (0 <= norm_angle1 <= 45) or \
+                                      (300 <= norm_angle2 <= 345) or (0 <= norm_angle2 <= 45)
+                        has_bottom_leg = (15 <= norm_angle1 <= 60) or (15 <= norm_angle2 <= 60)
+
+                        if not (has_top_leg and has_bottom_leg):
+                            print(f"        [ARROW FILTER] Rejected: angles {norm_angle1:.1f}° and {norm_angle2:.1f}° don't form RIGHT arrow (>)")
+                            print(f"        [ARROW FILTER]   Need: top leg 300-45° AND bottom leg 15-60°")
+                            continue
+
+                    # Valid horizontal arrow (< or >) - passed all filters
+                    print(f"        [ARROW DETECTED] {direction.upper()} arrow found: angles {angle1:.1f}° and {angle2:.1f}°")
+                    print(f"        [ARROW ANGLES] Line1: horiz_dev={dev_horiz_1:.1f}°, vert_dev={dev_vert_1:.1f}°")
+                    print(f"        [ARROW ANGLES] Line2: horiz_dev={dev_horiz_2:.1f}°, vert_dev={dev_vert_2:.1f}°")
+                    print(f"        [ARROW VALIDATION] len1={length1:.1f}px, len2={length2:.1f}px, ratio={length_ratio:.2f}, conv_dist={conv_dist:.1f}px")
+
                     # Calculate the arrow tip position (convergence point of the two lines)
                     # For left arrow: use the leftmost X coordinate
                     # For right arrow: use the rightmost X coordinate
@@ -1050,7 +1242,7 @@ def check_for_arrows_at_line_ends(roi_image, roi_x_offset, roi_y_offset, line_co
 
     elif direction in ['up', 'down']:
         # Detect lines in the FULL ROI
-        lines = detect_lines_in_roi(roi_image, 0, 0) if roi_image.size > 0 else []
+        lines = detect_lines_in_roi(roi_image, roi_x_offset, roi_y_offset, inverse_transform) if roi_image.size > 0 else []
         # For up/down arrows, just check if we have at least 2 lines
         return len(lines) >= 2
 
@@ -1100,19 +1292,19 @@ def calculate_rotated_corners(x1, y1, x2, y2, angle_degrees, center_point):
 
 def extend_roi_and_get_full_extent(image, measurement, category, image_path=None):
     """
-    After classification, trace classification lines outward to find full line extent.
-    Uses the lines found during classification and traces them until arrows are found.
+    After classification, search extended ROIs for arrows to find full line extent.
+    Creates large search areas and scans for arrow patterns.
 
     Args:
         image: The full image
-        measurement: The measurement dict with ROI info and classification lines
+        measurement: The measurement dict with ROI info
         category: 'width' or 'height'
         image_path: Optional path to the image file (for debug output naming)
 
     Returns:
         Extent info dict with left/right (for width) or top/bottom (for height)
     """
-    print(f"    Extending ROI for {category.upper()} measurement using line tracing...")
+    print(f"    Searching extended ROIs for arrows to calculate {category.upper()} extent...")
 
     x = int(measurement['position'][0])
     y = int(measurement['position'][1])
@@ -1134,22 +1326,18 @@ def extend_roi_and_get_full_extent(image, measurement, category, image_path=None
         text_top = y - text_height // 2
         text_bottom = y + text_height // 2
 
-    roi_rotation_angle = measurement.get('roi_rotation_angle', 0)
+    # Store both angles for two-pass search
+    classification_roi_angle = measurement.get('roi_rotation_angle', 0)  # Angle used in classification
+    h_line_angle = measurement.get('h_line_angle', 0)  # Detected line angle (may be arrow line)
+    print(f"      [EXTENT DEBUG] classification_roi_angle (roi_rotation_angle) = {classification_roi_angle:.1f}°")
+    print(f"      [EXTENT DEBUG] h_line_angle = {h_line_angle:.1f}°")
+
     h_roi_height_multiplier = 1.0
     v_roi_width_multiplier = 1.0
     min_gap = 15
 
     if category == 'width':
-        # NEW APPROACH: Use classification lines and trace them outward
-        # Get classification lines from measurement
-        classification_h_lines = measurement.get('h_lines', [])
-
-        if not classification_h_lines:
-            print(f"      ERROR: No classification lines found in measurement['h_lines']")
-            return None
-
-        print(f"      Found {len(classification_h_lines)} classification lines to trace")
-
+        # Create extended search ROIs to look for arrows
         # Extend H-ROI maximum 2 inches (192px at 96 DPI) on each side for arrow search
         max_extension = 192  # 2 inches at 96 DPI
 
@@ -1168,63 +1356,159 @@ def extend_roi_and_get_full_extent(image, measurement, category, image_path=None
         print(f"      Arrow search Left H-ROI: x=[{h_left_x1}, {h_left_x2}] (width: {h_left_x2-h_left_x1}px)")
         print(f"      Arrow search Right H-ROI: x=[{h_right_x1}, {h_right_x2}] (width: {h_right_x2-h_right_x1}px)")
 
-        # Extract ROIs for arrow detection (needed for check_for_arrows_at_line_ends)
-        h_left_M_inv = None
-        h_right_M_inv = None
-        if roi_rotation_angle != 0:
-            h_left_roi, h_left_M_inv = extract_rotated_roi(image, h_left_x1, h_left_y1, h_left_x2, h_left_y2, roi_rotation_angle, (x, y))
-            h_right_roi, h_right_M_inv = extract_rotated_roi(image, h_right_x1, h_right_y1, h_right_x2, h_right_y2, roi_rotation_angle, (x, y))
+        # === PASS 1: Try classification ROI angle first ===
+        print(f"      [PASS 1] Searching with classification ROI angle ({classification_roi_angle:.1f}°)...")
+        roi_rotation_angle_pass1 = classification_roi_angle
+        h_left_M_inv_pass1 = None
+        h_right_M_inv_pass1 = None
+        if roi_rotation_angle_pass1 != 0:
+            h_left_roi_pass1, h_left_M_inv_pass1 = extract_rotated_roi(image, h_left_x1, h_left_y1, h_left_x2, h_left_y2, roi_rotation_angle_pass1, (x, y))
+            h_right_roi_pass1, h_right_M_inv_pass1 = extract_rotated_roi(image, h_right_x1, h_right_y1, h_right_x2, h_right_y2, roi_rotation_angle_pass1, (x, y))
         else:
-            h_left_roi = image[h_left_y1:h_left_y2, h_left_x1:h_left_x2]
-            h_right_roi = image[h_right_y1:h_right_y2, h_right_x1:h_right_x2]
+            h_left_roi_pass1 = image[h_left_y1:h_left_y2, h_left_x1:h_left_x2]
+            h_right_roi_pass1 = image[h_right_y1:h_right_y2, h_right_x1:h_right_x2]
 
-        # Save debug images of ROIs for inspection
-        if image_path:
-            import os
-            output_dir = os.path.dirname(os.path.abspath(image_path))
-            base_name = os.path.splitext(os.path.basename(image_path))[0]
+        # Search for arrows in Pass 1 ROIs
+        has_left_arrows_pass1, left_arrow_x_pass1 = check_for_arrows_at_line_ends(h_left_roi_pass1, h_left_x1, h_left_y1, None, 'left', h_left_M_inv_pass1)
+        has_right_arrows_pass1, right_arrow_x_pass1 = check_for_arrows_at_line_ends(h_right_roi_pass1, h_right_x1, h_right_y1, None, 'right', h_right_M_inv_pass1)
+
+        print(f"        Pass 1 Left ROI: arrows={has_left_arrows_pass1}, position={left_arrow_x_pass1}")
+        print(f"        Pass 1 Right ROI: arrows={has_right_arrows_pass1}, position={right_arrow_x_pass1}")
+
+        # If Pass 1 found arrows, use those results
+        if has_left_arrows_pass1 or has_right_arrows_pass1:
+            print(f"      [PASS 1 SUCCESS] Found arrows using classification angle, processing extent...")
+
+            # Use Pass 1 results - set these as the main results
+            roi_rotation_angle = roi_rotation_angle_pass1
+            h_left_roi = h_left_roi_pass1
+            h_right_roi = h_right_roi_pass1
+            h_left_M_inv = h_left_M_inv_pass1
+            h_right_M_inv = h_right_M_inv_pass1
+            has_left_arrows = has_left_arrows_pass1
+            left_arrow_x = left_arrow_x_pass1
+            has_right_arrows = has_right_arrows_pass1
+            right_arrow_x = right_arrow_x_pass1
+
+            # Save Pass 1 debug images
+            if image_path:
+                import os
+                output_dir = os.path.dirname(os.path.abspath(image_path))
+                base_name = os.path.splitext(os.path.basename(image_path))[0]
+            else:
+                output_dir = "/tmp"
+                base_name = "debug"
+            m_id = measurement.get('id', 'unknown')
+            m_text = measurement.get('text', 'unknown').replace('/', '-').replace(' ', '')
+            left_roi_path = f"{output_dir}/{base_name}_M{m_id}_{m_text}_extent_left_roi_pass1.png"
+            right_roi_path = f"{output_dir}/{base_name}_M{m_id}_{m_text}_extent_right_roi_pass1.png"
+            cv2.imwrite(left_roi_path, h_left_roi)
+            cv2.imwrite(right_roi_path, h_right_roi)
+            print(f"      [DEBUG] Saved Pass 1 ROI images: {base_name}_M{m_id}_{m_text}_extent_left_roi_pass1.png, {base_name}_M{m_id}_{m_text}_extent_right_roi_pass1.png")
+
+            # Skip Pass 2 and go directly to extent calculation
         else:
-            output_dir = "/tmp"
-            base_name = "debug"
+            print(f"      [PASS 1 FAILED] No arrows found with classification angle")
+            print(f"      [PASS 2] Trying with h-line angle ({h_line_angle:.1f}°)...")
 
-        # Use measurement ID (assigned in Phase 2)
-        m_id = measurement.get('id', 'unknown')
-        m_text = measurement.get('text', 'unknown').replace('/', '-').replace(' ', '')
-        left_roi_path = f"{output_dir}/{base_name}_M{m_id}_{m_text}_extent_left_roi.png"
-        right_roi_path = f"{output_dir}/{base_name}_M{m_id}_{m_text}_extent_right_roi.png"
-        cv2.imwrite(left_roi_path, h_left_roi)
-        cv2.imwrite(right_roi_path, h_right_roi)
-        print(f"      [DEBUG] Saved ROI images: {base_name}_M{m_id}_{m_text}_extent_left_roi.png, {base_name}_M{m_id}_{m_text}_extent_right_roi.png")
+            # Pass 2: Use h-line angle (current behavior)
+            roi_rotation_angle = h_line_angle
 
-        # SEARCH FOR ARROWS IN THE EXTENDED ROIs
-        # No line tracing - just search the full ROIs directly for arrow patterns
-        print(f"      Searching for arrows in extended ROIs (no line tracing)")
+        # Extract ROIs for arrow detection (Pass 2 or if Pass 1 failed)
+        if not (has_left_arrows_pass1 or has_right_arrows_pass1):
+            h_left_M_inv = None
+            h_right_M_inv = None
+            if roi_rotation_angle != 0:
+                h_left_roi, h_left_M_inv = extract_rotated_roi(image, h_left_x1, h_left_y1, h_left_x2, h_left_y2, roi_rotation_angle, (x, y))
+                h_right_roi, h_right_M_inv = extract_rotated_roi(image, h_right_x1, h_right_y1, h_right_x2, h_right_y2, roi_rotation_angle, (x, y))
+            else:
+                h_left_roi = image[h_left_y1:h_left_y2, h_left_x1:h_left_x2]
+                h_right_roi = image[h_right_y1:h_right_y2, h_right_x1:h_right_x2]
 
-        # Search each ROI directly for arrows
-        has_left_arrows, left_arrow_x = check_for_arrows_at_line_ends(h_left_roi, h_left_x1, h_left_y1, None, 'left')
-        has_right_arrows, right_arrow_x = check_for_arrows_at_line_ends(h_right_roi, h_right_x1, h_right_y1, None, 'right')
+            # Save Pass 2 debug images of ROIs for inspection
+            if image_path:
+                import os
+                output_dir = os.path.dirname(os.path.abspath(image_path))
+                base_name = os.path.splitext(os.path.basename(image_path))[0]
+            else:
+                output_dir = "/tmp"
+                base_name = "debug"
 
-        print(f"        Left ROI: arrows={has_left_arrows}, position={left_arrow_x}")
-        print(f"        Right ROI: arrows={has_right_arrows}, position={right_arrow_x}")
+            # Use measurement ID (assigned in Phase 2)
+            m_id = measurement.get('id', 'unknown')
+            m_text = measurement.get('text', 'unknown').replace('/', '-').replace(' ', '')
+            left_roi_path = f"{output_dir}/{base_name}_M{m_id}_{m_text}_extent_left_roi_pass2.png"
+            right_roi_path = f"{output_dir}/{base_name}_M{m_id}_{m_text}_extent_right_roi_pass2.png"
+            cv2.imwrite(left_roi_path, h_left_roi)
+            cv2.imwrite(right_roi_path, h_right_roi)
+            print(f"      [DEBUG] Saved Pass 2 ROI images: {base_name}_M{m_id}_{m_text}_extent_left_roi_pass2.png, {base_name}_M{m_id}_{m_text}_extent_right_roi_pass2.png")
 
-        # Get the angle from the classification h_lines (use the angle of the dimension line)
-        h_line_angle = measurement.get('h_line_angle', 0)
+            # Search the FULL extended ROIs for arrow patterns (Pass 2)
+            print(f"      Searching complete ROIs for arrow patterns (Pass 2)...")
 
-        # Extend from measurement center (x, y) to arrow positions at h_line_angle
+            # Search each ROI directly for arrows
+            has_left_arrows, left_arrow_x = check_for_arrows_at_line_ends(h_left_roi, h_left_x1, h_left_y1, None, 'left', h_left_M_inv)
+            has_right_arrows, right_arrow_x = check_for_arrows_at_line_ends(h_right_roi, h_right_x1, h_right_y1, None, 'right', h_right_M_inv)
+
+            print(f"        Pass 2 Left ROI: arrows={has_left_arrows}, position={left_arrow_x}")
+            print(f"        Pass 2 Right ROI: arrows={has_right_arrows}, position={right_arrow_x}")
+
+        # Use the angle from whichever pass succeeded (roi_rotation_angle is set by Pass 1 or Pass 2)
+        extent_angle = roi_rotation_angle
+        print(f"      Using extent angle: {extent_angle:.1f}° from {'Pass 1' if has_left_arrows_pass1 or has_right_arrows_pass1 else 'Pass 2'}")
+
+        # Extend from measurement center (x, y) to arrow positions at extent_angle
         # This ensures both sides follow the same angle consistently
         if has_left_arrows and has_right_arrows:
-            # Convert ROI coords to image coords
-            extent_left_x = h_left_x1 + left_arrow_x
-            extent_right_x = h_right_x1 + right_arrow_x
+            # Convert ROI coords to image coords using inverse transform
+            if h_left_M_inv is not None:
+                # Rotated ROI - use inverse transform to map arrow position back to image coords
+                roi_center_y = (h_left_y2 - h_left_y1) / 2  # Middle of ROI height
+                arrow_pt = np.array([[[left_arrow_x, roi_center_y]]], dtype=np.float32)
+                arrow_img = cv2.perspectiveTransform(arrow_pt, h_left_M_inv)
+                extent_left_x, extent_left_y = arrow_img[0][0]
+                print(f"        [TRANSFORM] Left arrow: ROI({left_arrow_x:.0f}, {roi_center_y:.0f}) → Image({extent_left_x:.0f}, {extent_left_y:.0f})")
+            else:
+                # Non-rotated ROI - simple offset
+                extent_left_x = h_left_x1 + left_arrow_x
+                extent_left_y = y
 
-            # Extend from measurement center (x, y) to arrow positions at h_line_angle
+            if h_right_M_inv is not None:
+                # Rotated ROI - use inverse transform to map arrow position back to image coords
+                roi_center_y = (h_right_y2 - h_right_y1) / 2  # Middle of ROI height
+                arrow_pt = np.array([[[right_arrow_x, roi_center_y]]], dtype=np.float32)
+                arrow_img = cv2.perspectiveTransform(arrow_pt, h_right_M_inv)
+                extent_right_x, extent_right_y = arrow_img[0][0]
+                print(f"        [TRANSFORM] Right arrow: ROI({right_arrow_x:.0f}, {roi_center_y:.0f}) → Image({extent_right_x:.0f}, {extent_right_y:.0f})")
+            else:
+                # Non-rotated ROI - simple offset
+                extent_right_x = h_right_x1 + right_arrow_x
+                extent_right_y = y
+
+            # Extend from measurement center (x, y) to arrow positions at extent_angle
             dx_left = extent_left_x - x
-            dy_left = dx_left * np.tan(np.radians(h_line_angle))
+            dy_left = dx_left * np.tan(np.radians(extent_angle))
             extent_left_y = y + dy_left
 
             dx_right = extent_right_x - x
-            dy_right = dx_right * np.tan(np.radians(h_line_angle))
+            dy_right = dx_right * np.tan(np.radians(extent_angle))
             extent_right_y = y + dy_right
+
+            # Store debug_rois with rotated corners if ROI is rotated
+            if roi_rotation_angle != 0:
+                # Calculate rotated corners for visualization
+                left_corners = calculate_rotated_corners(h_left_x1, h_left_y1, h_left_x2, h_left_y2, roi_rotation_angle, (x, y))
+                right_corners = calculate_rotated_corners(h_right_x1, h_right_y1, h_right_x2, h_right_y2, roi_rotation_angle, (x, y))
+                debug_rois_data = {
+                    'left': {'corners': left_corners},
+                    'right': {'corners': right_corners}
+                }
+            else:
+                # Non-rotated ROIs - use old format
+                debug_rois_data = {
+                    'left': (h_left_x1, h_left_y1, h_left_x2, h_left_y2),
+                    'right': (h_right_x1, h_right_y1, h_right_x2, h_right_y2)
+                }
 
             extent = {
                 'left': extent_left_x,
@@ -1232,44 +1516,72 @@ def extend_roi_and_get_full_extent(image, measurement, category, image_path=None
                 'left_y': extent_left_y,
                 'right_y': extent_right_y,
                 'span': extent_right_x - extent_left_x,
-                'angle': h_line_angle,
-                'debug_rois': {
-                    'left': (h_left_x1, h_left_y1, h_left_x2, h_left_y2),
-                    'right': (h_right_x1, h_right_y1, h_right_x2, h_right_y2)
-                }
+                'angle': extent_angle,
+                'hline_angle': measurement.get('h_line_angle', extent_angle),  # Actual H-line angle for visualization
+                'debug_rois': debug_rois_data
             }
-            print(f"      Found arrows on both sides: extent ({extent_left_x:.0f},{extent_left_y:.0f}) to ({extent_right_x:.0f},{extent_right_y:.0f}) (span: {extent['span']:.0f}px, angle: {h_line_angle:.1f}°)")
+            print(f"      Found arrows on both sides: extent ({extent_left_x:.0f},{extent_left_y:.0f}) to ({extent_right_x:.0f},{extent_right_y:.0f}) (span: {extent['span']:.0f}px, angle: {extent_angle:.1f}°)")
             return extent
         elif has_left_arrows or has_right_arrows:
             # Only one arrow found - mirror the distance to the other side at same angle
             if has_left_arrows:
-                # Have left arrow - extend from measurement center to arrow
-                extent_left_x = h_left_x1 + left_arrow_x
-                dx_left = extent_left_x - x
-                dy_left = dx_left * np.tan(np.radians(h_line_angle))
-                extent_left_y = y + dy_left
+                # Have left arrow - transform ROI coords to image coords
+                if h_left_M_inv is not None:
+                    # Rotated ROI - use inverse transform
+                    roi_center_y = (h_left_y2 - h_left_y1) / 2
+                    arrow_pt = np.array([[[left_arrow_x, roi_center_y]]], dtype=np.float32)
+                    arrow_img = cv2.perspectiveTransform(arrow_pt, h_left_M_inv)
+                    extent_left_x, extent_left_y = arrow_img[0][0]
+                    print(f"        [TRANSFORM] Left arrow: ROI({left_arrow_x:.0f}, {roi_center_y:.0f}) → Image({extent_left_x:.0f}, {extent_left_y:.0f})")
+                else:
+                    # Non-rotated ROI - simple offset
+                    extent_left_x = h_left_x1 + left_arrow_x
+                    extent_left_y = y
 
                 # Mirror the distance to right side at same angle
                 distance = abs(extent_left_x - x)
                 extent_right_x = x + distance
                 dx_right = extent_right_x - x
-                dy_right = dx_right * np.tan(np.radians(h_line_angle))
+                dy_right = dx_right * np.tan(np.radians(extent_angle))
                 extent_right_y = y + dy_right
                 side = "left"
             else:
-                # Have right arrow - extend from measurement center to arrow
-                extent_right_x = h_right_x1 + right_arrow_x
-                dx_right = extent_right_x - x
-                dy_right = dx_right * np.tan(np.radians(h_line_angle))
-                extent_right_y = y + dy_right
+                # Have right arrow - transform ROI coords to image coords
+                if h_right_M_inv is not None:
+                    # Rotated ROI - use inverse transform
+                    roi_center_y = (h_right_y2 - h_right_y1) / 2
+                    arrow_pt = np.array([[[right_arrow_x, roi_center_y]]], dtype=np.float32)
+                    arrow_img = cv2.perspectiveTransform(arrow_pt, h_right_M_inv)
+                    extent_right_x, extent_right_y = arrow_img[0][0]
+                    print(f"        [TRANSFORM] Right arrow: ROI({right_arrow_x:.0f}, {roi_center_y:.0f}) → Image({extent_right_x:.0f}, {extent_right_y:.0f})")
+                else:
+                    # Non-rotated ROI - simple offset
+                    extent_right_x = h_right_x1 + right_arrow_x
+                    extent_right_y = y
 
                 # Mirror the distance to left side at same angle
                 distance = abs(extent_right_x - x)
                 extent_left_x = x - distance
                 dx_left = extent_left_x - x
-                dy_left = dx_left * np.tan(np.radians(h_line_angle))
+                dy_left = dx_left * np.tan(np.radians(extent_angle))
                 extent_left_y = y + dy_left
                 side = "right"
+
+            # Store debug_rois with rotated corners if ROI is rotated
+            if roi_rotation_angle != 0:
+                # Calculate rotated corners for visualization
+                left_corners = calculate_rotated_corners(h_left_x1, h_left_y1, h_left_x2, h_left_y2, roi_rotation_angle, (x, y))
+                right_corners = calculate_rotated_corners(h_right_x1, h_right_y1, h_right_x2, h_right_y2, roi_rotation_angle, (x, y))
+                debug_rois_data = {
+                    'left': {'corners': left_corners},
+                    'right': {'corners': right_corners}
+                }
+            else:
+                # Non-rotated ROIs - use old format
+                debug_rois_data = {
+                    'left': (h_left_x1, h_left_y1, h_left_x2, h_left_y2),
+                    'right': (h_right_x1, h_right_y1, h_right_x2, h_right_y2)
+                }
 
             extent = {
                 'left': extent_left_x,
@@ -1277,28 +1589,63 @@ def extend_roi_and_get_full_extent(image, measurement, category, image_path=None
                 'left_y': extent_left_y,
                 'right_y': extent_right_y,
                 'span': extent_right_x - extent_left_x,
-                'angle': h_line_angle,
-                'debug_rois': {
-                    'left': (h_left_x1, h_left_y1, h_left_x2, h_left_y2),
-                    'right': (h_right_x1, h_right_y1, h_right_x2, h_right_y2)
-                }
+                'angle': extent_angle,
+                'hline_angle': measurement.get('h_line_angle', extent_angle),  # Actual H-line angle for visualization
+                'debug_rois': debug_rois_data
             }
-            print(f"      Found arrow on {side} side only: mirrored extent ({extent_left_x:.0f},{extent_left_y:.0f}) to ({extent_right_x:.0f},{extent_right_y:.0f}) (span: {extent['span']:.0f}px, angle: {h_line_angle:.1f}°)")
+            print(f"      Found arrow on {side} side only: mirrored extent ({extent_left_x:.0f},{extent_left_y:.0f}) to ({extent_right_x:.0f},{extent_right_y:.0f}) (span: {extent['span']:.0f}px, angle: {extent_angle:.1f}°)")
             return extent
         else:
-            # No arrows found - use fallback extent
+            # No arrows found - use fallback extent OR return failed extent with debug_rois
             print(f"      No arrows found on either side - using fallback")
             if 'width_extent' in measurement:
                 fallback_extent = measurement['width_extent'].copy()
-                fallback_extent['debug_rois'] = {
-                    'left': (h_left_x1, h_left_y1, h_left_x2, h_left_y2),
-                    'right': (h_right_x1, h_right_y1, h_right_x2, h_right_y2)
-                }
+
+                # Store debug_rois with rotated corners if ROI is rotated
+                if roi_rotation_angle != 0:
+                    # Calculate rotated corners for visualization
+                    left_corners = calculate_rotated_corners(h_left_x1, h_left_y1, h_left_x2, h_left_y2, roi_rotation_angle, (x, y))
+                    right_corners = calculate_rotated_corners(h_right_x1, h_right_y1, h_right_x2, h_right_y2, roi_rotation_angle, (x, y))
+                    fallback_extent['debug_rois'] = {
+                        'left': {'corners': left_corners},
+                        'right': {'corners': right_corners}
+                    }
+                else:
+                    # Non-rotated ROIs - use old format
+                    fallback_extent['debug_rois'] = {
+                        'left': (h_left_x1, h_left_y1, h_left_x2, h_left_y2),
+                        'right': (h_right_x1, h_right_y1, h_right_x2, h_right_y2)
+                    }
+
                 print(f"      Using fallback extent: {fallback_extent['left']:.0f} to {fallback_extent['right']:.0f} (span: {fallback_extent['span']:.0f}px)")
                 return fallback_extent
             else:
-                print(f"      No fallback extent available - returning None")
-                return None
+                # No fallback extent available - return failed extent with debug_rois for visualization
+                print(f"      No fallback extent available - returning failed extent with debug_rois")
+
+                # Store debug_rois for visualization even though extent failed
+                if roi_rotation_angle != 0:
+                    # Calculate rotated corners for visualization
+                    left_corners = calculate_rotated_corners(h_left_x1, h_left_y1, h_left_x2, h_left_y2, roi_rotation_angle, (x, y))
+                    right_corners = calculate_rotated_corners(h_right_x1, h_right_y1, h_right_x2, h_right_y2, roi_rotation_angle, (x, y))
+                    debug_rois_data = {
+                        'left': {'corners': left_corners},
+                        'right': {'corners': right_corners}
+                    }
+                else:
+                    # Non-rotated ROIs - use old format
+                    debug_rois_data = {
+                        'left': (h_left_x1, h_left_y1, h_left_x2, h_left_y2),
+                        'right': (h_right_x1, h_right_y1, h_right_x2, h_right_y2)
+                    }
+
+                # Return a dict with failed flag and debug_rois
+                return {
+                    'failed': True,
+                    'debug_rois': debug_rois_data,
+                    'angle': extent_angle,
+                    'hline_angle': measurement.get('h_line_angle', extent_angle)  # Actual H-line angle for visualization
+                }
 
     elif category == 'height':
         # Extend V-ROI to full image height
@@ -1366,9 +1713,14 @@ def extend_roi_and_get_full_extent(image, measurement, category, image_path=None
     return None
 
 
-def classify_measurements_by_lines(image, measurements):
+def classify_measurements_by_lines(image, measurements, image_path=None):
     """
     Classify measurements as WIDTH, HEIGHT, or UNCLASSIFIED based on nearby dimension lines
+
+    Args:
+        image: Source image
+        measurements: List of measurement dicts
+        image_path: Path to image file (for debug image saving)
 
     Returns:
         - classified: dict with 'width', 'height', 'unclassified' lists
@@ -1382,11 +1734,16 @@ def classify_measurements_by_lines(image, measurements):
 
     measurement_categories = []
 
+    # Add measurement IDs if not present (for debug filenames)
+    for i, meas in enumerate(measurements):
+        if 'id' not in meas:
+            meas['id'] = i + 1
+
     for i, meas in enumerate(measurements):
         print(f"\n  Analyzing measurement {i+1}: '{meas['text']}' at ({meas['position'][0]:.0f}, {meas['position'][1]:.0f})")
 
         # Find lines near this measurement
-        line_info = find_lines_near_measurement(image, meas)
+        line_info = find_lines_near_measurement(image, meas, save_roi_debug=True, image_path=image_path)
 
         # Check if it's actually classified or unclassified
         if line_info and not line_info.get('unclassified'):
@@ -1416,7 +1773,7 @@ def classify_measurements_by_lines(image, measurements):
                 print(f"    Attempting {angle:+.1f}° rotation...")
                 meas_rot = meas.copy()
                 meas_rot['roi_rotation_angle'] = angle
-                line_info = find_lines_near_measurement(image, meas_rot)
+                line_info = find_lines_near_measurement(image, meas_rot, save_roi_debug=True, image_path=image_path)
 
                 if line_info and not line_info.get('unclassified'):
                     # Calculate score based on how horizontal the lines are
@@ -1438,7 +1795,8 @@ def classify_measurements_by_lines(image, measurements):
                             'line_info': line_info,
                             'meas_copy': meas_rot,
                             'score': score,
-                            'orientation': 'horizontal_line'
+                            'orientation': 'horizontal_line',
+                            'line_angle': line_angle  # Store the actual h-line angle for extent calculation
                         })
                     elif line_info['orientation'] == 'vertical_line':
                         # Store but with high score (we prefer horizontal for width)
@@ -1472,6 +1830,8 @@ def classify_measurements_by_lines(image, measurements):
                     # Copy detected lines for visualization
                     meas['h_lines'] = best['meas_copy'].get('h_lines', [])
                     meas['v_lines'] = best['meas_copy'].get('v_lines', [])
+                    # IMPORTANT: Use the actual h-line angle from scoring, not from measurement object
+                    meas['h_line_angle'] = best.get('line_angle', best['angle'])  # Use line_angle if available, fallback to rotation angle
                     print(f"    → Classified as WIDTH (via {best['angle']:+.1f}° rotation)")
                     # NOTE: Extent calculation moved to Phase 4 (pairing)
                     # Extent is only calculated for bottom widths after down arrow classification
