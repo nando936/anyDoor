@@ -69,6 +69,42 @@ def is_suspicious_measurement(text):
     except:
         pass
 
+    # Pattern 7: Letters in measurement (except valid notations F, O, NH)
+    # Valid notations: F (finished size), O (opening size), NH (no hinges)
+    if re.search(r'[A-Za-z]', text):
+        # Remove valid notations from check
+        text_cleaned = text.upper()
+        text_cleaned = re.sub(r'\bF\b', '', text_cleaned)  # Remove standalone F
+        text_cleaned = re.sub(r'\bO\b', '', text_cleaned)  # Remove standalone O
+        text_cleaned = re.sub(r'\bNH\b', '', text_cleaned)  # Remove NH
+        # Check if any letters remain after removing valid notations
+        if re.search(r'[A-Z]', text_cleaned):
+            return True, "invalid_letters_in_measurement"
+
+    # Pattern 8: Invalid fraction denominator (not in 1/16 increments)
+    # Valid fractions: 1/2, 1/4, 3/4, 1/8, 3/8, 5/8, 7/8, and 1/16 through 15/16
+    for match in re.finditer(r'(\d+)/(\d+)', text):
+        num, denom = int(match.group(1)), int(match.group(2))
+
+        # Check if denominator is valid (2, 4, 8, 16)
+        valid_denoms = {2, 4, 8, 16}
+        if denom not in valid_denoms:
+            return True, "invalid_fraction_denominator"
+
+        # Check valid numerator for each denominator
+        # 1/2: only 1 is valid
+        if denom == 2 and num != 1:
+            return True, "invalid_fraction_numerator"
+        # 1/4, 3/4: only 1 and 3 are valid
+        if denom == 4 and num not in {1, 3}:
+            return True, "invalid_fraction_numerator"
+        # 1/8, 3/8, 5/8, 7/8: only odd numbers 1,3,5,7 are valid
+        if denom == 8 and num not in {1, 3, 5, 7}:
+            return True, "invalid_fraction_numerator"
+        # 1/16 through 15/16: only odd numbers 1,3,5,7,9,11,13,15 are valid
+        if denom == 16 and num not in {1, 3, 5, 7, 9, 11, 13, 15}:
+            return True, "invalid_fraction_numerator"
+
     return False, None
 
 
@@ -115,7 +151,11 @@ Here are the images to verify:
         prompt += f"   OCR read: {meas['text']} (suspicious: {meas['reason']})\n\n"
 
     # Call Claude via CLI
-    claude_exe = r'C:\Users\nando\AppData\Roaming\npm\claude.cmd'
+    import platform
+    if platform.system() == 'Windows':
+        claude_exe = r'C:\Users\nando\AppData\Roaming\npm\claude.cmd'
+    else:
+        claude_exe = 'claude'  # Linux/Mac - assume in PATH
 
     try:
         print(f"Calling Claude to verify {len(suspicious_measurements)} measurements...")
@@ -175,19 +215,50 @@ def apply_claude_corrections(measurements_list, corrections):
         corrections: Dict mapping index -> corrected_text
 
     Returns:
-        Number of corrections applied
+        Tuple: (number of corrections applied, list of invalid indices)
     """
     if not corrections:
-        return 0
+        return 0, []
+
+    # Phrases that indicate Claude couldn't read the measurement
+    invalid_phrases = [
+        'no visible',
+        'blank',
+        'washed out',
+        'unclear',
+        'cannot read',
+        'illegible',
+        'too blurry',
+        'not readable',
+        'no text',
+        'unreadable',
+        'too faint',
+        'not visible'
+    ]
 
     count = 0
+    invalid_indices = []
+
     for index, corrected_text in corrections.items():
         if index < len(measurements_list):
             old_text = measurements_list[index]['text']
-            measurements_list[index]['text'] = corrected_text
-            measurements_list[index]['claude_corrected'] = True
-            measurements_list[index]['original_ocr'] = old_text
-            count += 1
-            print(f"  Applied correction at index {index}: '{old_text}' → '{corrected_text}'")
 
-    return count
+            # Check if Claude marked this measurement as invalid/unreadable
+            corrected_lower = corrected_text.lower()
+            is_invalid = any(phrase in corrected_lower for phrase in invalid_phrases)
+
+            if is_invalid:
+                # Mark as invalid instead of updating text
+                measurements_list[index]['claude_invalid'] = True
+                measurements_list[index]['claude_reason'] = corrected_text
+                invalid_indices.append(index)
+                print(f"  Marked INVALID at index {index}: '{old_text}' - Claude says: '{corrected_text}'")
+            else:
+                # Apply correction normally
+                measurements_list[index]['text'] = corrected_text
+                measurements_list[index]['claude_corrected'] = True
+                measurements_list[index]['original_ocr'] = old_text
+                count += 1
+                print(f"  Applied correction at index {index}: '{old_text}' → '{corrected_text}'")
+
+    return count, invalid_indices

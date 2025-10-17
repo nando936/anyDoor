@@ -7,6 +7,8 @@ Orchestrates the full detection pipeline.
 import sys
 import os
 import cv2
+import re
+import glob
 from dotenv import load_dotenv
 
 # Fix Unicode issues on Windows
@@ -16,23 +18,43 @@ sys.stdout.reconfigure(encoding='utf-8')
 load_dotenv()
 
 
-class Tee:
-    """Redirect stdout/stderr to both console and file"""
-    def __init__(self, file_path, mode='w'):
-        self.file = open(file_path, mode, encoding='utf-8')
-        self.terminal = sys.stdout if mode == 'w' else sys.stderr
+class PhaseLogger:
+    """Redirect stdout to both console and phase-specific files"""
+    def __init__(self, base_path, base_name):
+        self.terminal = sys.stdout
+        self.base_path = base_path
+        self.base_name = base_name
+        self.current_file = None
+        self.current_phase = None
+        self.phase_files = []
+
+    def switch_phase(self, phase_name, phase_label):
+        """Switch to a new phase file"""
+        # Close current file if open
+        if self.current_file:
+            self.current_file.close()
+
+        # Create new file for this phase
+        file_path = os.path.join(self.base_path, f"{self.base_name}_phase_{phase_name}_{phase_label}.txt")
+        self.current_file = open(file_path, 'w', encoding='utf-8')
+        self.current_phase = phase_name
+        self.phase_files.append(file_path)
 
     def write(self, message):
         self.terminal.write(message)
-        self.file.write(message)
-        self.file.flush()  # Ensure immediate write to file
+        if self.current_file:
+            self.current_file.write(message)
+            self.current_file.flush()
 
     def flush(self):
         self.terminal.flush()
-        self.file.flush()
+        if self.current_file:
+            self.current_file.flush()
 
     def close(self):
-        self.file.close()
+        if self.current_file:
+            self.current_file.close()
+        return self.phase_files
 
 # Add parent directory to path for shared utilities
 parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -56,6 +78,7 @@ from measurement_pairing_v2 import pair_measurements_by_proximity
 from visualization import create_visualization
 from claude_verification import is_suspicious_measurement, verify_measurements_with_claude, apply_claude_corrections
 from prompt_user_info import prompt_for_order_info
+from measurement_config import VALIDATION_CONFIG
 import json
 
 
@@ -84,15 +107,14 @@ def main(start_opening_number=1):
 
     image_path = sys.argv[1]
 
-    # Set up logging to file
+    # Set up phase-based logging
     base_name = os.path.splitext(os.path.basename(image_path))[0]
     log_dir = os.path.dirname(os.path.abspath(image_path))
-    log_file = os.path.join(log_dir, f"{base_name}_debug.txt")
 
-    # Redirect stdout to both console and file
-    tee = Tee(log_file, 'w')
+    # Create phase logger
+    phase_logger = PhaseLogger(log_dir, base_name)
     old_stdout = sys.stdout
-    sys.stdout = tee
+    sys.stdout = phase_logger
 
     try:
         # Get API key
@@ -117,6 +139,9 @@ def main(start_opening_number=1):
             print(f"[ERROR] Image not found: {image_path}")
             return
 
+        # Start Phase 1-2.5 logging
+        phase_logger.switch_phase("1-2.5", "finding_and_verification")
+
         print(f"\n{'='*60}")
         print(f"Processing: {os.path.basename(image_path)}")
         print(f"{'='*60}")
@@ -138,7 +163,8 @@ def main(start_opening_number=1):
         measurements_list = []
         measurement_texts = []
         measurement_logic = []
-    
+        ocr_mismatches = []  # Track measurements flagged for Claude due to OCR mismatch
+
         for i, area in enumerate(merged_areas):
             print(f"\nCenter {i+1}/{len(merged_areas)}: ({area['center'][0]:.0f}, {area['center'][1]:.0f})")
             result = verify_measurement_at_center_with_logic(
@@ -150,62 +176,136 @@ def main(start_opening_number=1):
                 center_index=i,
                 save_debug=True
             )
-    
-            if result and result[0] and result[0][0]:  # Check if measurement found
-                measurement_value, bounds, notation, raw_ocr, is_finished = result[0]
+
+            if result and result[0]:
                 logic = result[1]
-    
-                measurement_texts.append(measurement_value)
-                measurement_logic.append(logic)
-    
-                measurements_list.append({
-                    'text': measurement_value,
-                    'position': area['center'],
-                    'bounds': bounds if bounds else area['bounds'],
-                    'notation': notation if notation else None,
-                    'is_finished_size': is_finished
-                })
-    
-                print(f"  ✓ Verified: '{measurement_value}'")
-                if notation:
-                    print(f"    Special notation: {notation}")
-                if is_finished:
-                    print(f"    Finished size (F)")
+
+                # Check for 'NEEDS_CLAUDE_VERIFICATION' flag (Phase 1 had digits, Phase 2 didn't)
+                if isinstance(result[0], tuple) and result[0][0] == 'NEEDS_CLAUDE_VERIFICATION':
+                    # OCR mismatch detected - Phase 1 had digits but Phase 2 verification failed
+                    # Add placeholder measurement so Claude can correct it in Phase 2.5
+                    base_name = os.path.splitext(os.path.basename(image_path))[0]
+                    base_name_clean = base_name.replace('_', '').replace('-', '')
+
+                    # Find debug image
+                    img_path_norm = image_path.replace('\\', '/')
+                    image_dir = os.path.dirname(img_path_norm)
+                    pos_x = int(area['center'][0])
+                    pos_y = int(area['center'][1])
+                    debug_pattern = f"{image_dir}/DEBUG_{base_name_clean}_M*_pos{pos_x}x{pos_y}_*_zoom1x.png"
+
+                    debug_files = glob.glob(debug_pattern)
+                    if debug_files:
+                        non_hsv_files = [f for f in debug_files if 'hsv' not in f.lower()]
+                        debug_image = non_hsv_files[0] if non_hsv_files else debug_files[0]
+
+                        # Add placeholder measurement with "?" text
+                        placeholder_measurement = {
+                            'id': len(measurements_list) + 1,
+                            'text': '?',  # Placeholder - will be corrected by Claude
+                            'position': area['center'],
+                            'original_center': area['center'],
+                            'bounds': area['bounds'],
+                            'notation': None,
+                            'is_finished_size': False
+                        }
+                        measurements_list.append(placeholder_measurement)
+                        measurement_texts.append('?')
+                        measurement_logic.append(logic)
+
+                        # Track for Claude verification in Phase 2.5
+                        ocr_mismatches.append({
+                            'index': len(measurements_list) - 1,  # Index in measurements_list
+                            'center': area['center'],
+                            'debug_image': debug_image,
+                            'phase1_texts': area['texts'],
+                            'reason': 'Phase 1 detected digits but Phase 2 OCR failed'
+                        })
+                        print(f"  [OCR MISMATCH] Flagged for Claude verification")
+                    continue  # Skip to next measurement
+
+                # Check if result[0] is a list of measurements or a single measurement tuple
+                measurements_to_add = []
+                if isinstance(result[0], list):
+                    # Multiple measurements returned (vertically separated)
+                    measurements_to_add = result[0]
+                else:
+                    # Single measurement returned (traditional case)
+                    if result[0][0]:  # Check if measurement value exists
+                        measurements_to_add = [result[0]]
+
+                # Process all measurements
+                for meas_tuple in measurements_to_add:
+                    measurement_value, bounds, notation, raw_ocr, is_finished = meas_tuple
+
+                    measurement_texts.append(measurement_value)
+                    measurement_logic.append(logic)
+
+                    # Calculate position from bounds if available, otherwise use area center
+                    if bounds:
+                        pos_x = (bounds['left'] + bounds['right']) / 2
+                        pos_y = (bounds['top'] + bounds['bottom']) / 2
+                        position = (pos_x, pos_y)
+                    else:
+                        position = area['center']
+
+                    measurements_list.append({
+                        'id': len(measurements_list) + 1,  # 1-based measurement number for debug files
+                        'text': measurement_value,
+                        'position': position,
+                        'original_center': area['center'],  # Store Phase 1 center for debug image lookup
+                        'bounds': bounds if bounds else area['bounds'],
+                        'notation': notation if notation else None,
+                        'is_finished_size': is_finished
+                    })
+
+                    print(f"  ✓ Verified: '{measurement_value}'")
+                    if notation:
+                        print(f"    Special notation: {notation}")
+                    if is_finished:
+                        print(f"    Finished size (F)")
             else:
                 print(f"  ✗ No valid measurement")
     
         print(f"\n{len(measurement_texts)} measurements verified")
-    
+
         # Recalculate bounds based on verified text dimensions
+        # SKIP recalculation for measurements with F/O notation - they need accurate OCR bounds
         print("\nRecalculating measurement bounds based on verified text...")
         for i, meas in enumerate(measurements_list):
             verified_text = meas['text']
             center_x, center_y = meas['position']
-    
+
+            # Skip recalculation for finished size (F) or opening size (O) measurements
+            # These need accurate OCR bounds to properly exclude F/O from ROI
+            if meas.get('is_finished_size', False) or meas.get('notation') in ['F', 'O']:
+                print(f"  M{i+1} '{verified_text}': keeping OCR bounds (has F/O notation)")
+                continue
+
             # Use OpenCV to get actual text dimensions
             font = cv2.FONT_HERSHEY_SIMPLEX
             font_scale = 1.0
             thickness = 2
             (text_w, text_h), baseline = cv2.getTextSize(verified_text, font, font_scale, thickness)
-    
+
             # Calculate new bounds centered on existing position
             # Add some padding (20% of text dimensions)
             padding_w = int(text_w * 0.2)
             padding_h = int(text_h * 0.2)
-    
+
             new_bounds = {
                 'left': center_x - (text_w + padding_w) / 2,
                 'right': center_x + (text_w + padding_w) / 2,
                 'top': center_y - (text_h + padding_h) / 2,
                 'bottom': center_y + (text_h + padding_h) / 2
             }
-    
+
             old_width = meas['bounds']['right'] - meas['bounds']['left']
             new_width = new_bounds['right'] - new_bounds['left']
-    
+
             if abs(old_width - new_width) > 20:  # Significant difference
                 print(f"  M{i+1} '{verified_text}': {old_width:.0f}px → {new_width:.0f}px")
-    
+
             meas['bounds'] = new_bounds
     
         # Phase 2.5: Claude verification of suspicious measurements
@@ -219,22 +319,20 @@ def main(start_opening_number=1):
                 is_suspicious, reason = is_suspicious_measurement(meas['text'])
                 if is_suspicious:
                     # Find the debug image for this measurement by matching position
-                    # Debug images are saved as: DEBUG_page{N}_M{i}_pos{x}x{y}_{text}_zoom3x.png
-                    import re
-                    import glob
+                    # Debug images are saved as: DEBUG_page{N}_M{i}_pos{x}x{y}_{text}_zoom1x.png
                     base_name = os.path.splitext(os.path.basename(image_path))[0]
-                    # Remove underscore from page name (debug files use "page2" not "page_2")
-                    base_name_clean = base_name.replace('_', '')
+                    # Remove underscore and dash from page name (debug files use "page2" not "page_2" or "page-2")
+                    base_name_clean = base_name.replace('_', '').replace('-', '')
     
                     # Find debug image in same directory as source image
                     # Normalize path for glob (use forward slashes)
                     img_path_norm = image_path.replace('\\', '/')
                     image_dir = os.path.dirname(img_path_norm)
     
-                    # Match by position (x, y) not by index, since some measurements get filtered
-                    pos_x = int(meas['position'][0])
-                    pos_y = int(meas['position'][1])
-                    debug_pattern = f"{image_dir}/DEBUG_{base_name_clean}_M*_pos{pos_x}x{pos_y}_*_zoom3x.png"
+                    # Match by Phase 1 center (used when saving debug images)
+                    pos_x = int(meas['original_center'][0])
+                    pos_y = int(meas['original_center'][1])
+                    debug_pattern = f"{image_dir}/DEBUG_{base_name_clean}_M*_pos{pos_x}x{pos_y}_*_zoom1x.png"
                     debug_files = glob.glob(debug_pattern)
     
                     if debug_files:
@@ -250,20 +348,86 @@ def main(start_opening_number=1):
                         print(f"  [{i}] '{meas['text']}' at ({pos_x}, {pos_y}) - {reason}")
                     else:
                         print(f"  [{i}] '{meas['text']}' at ({pos_x}, {pos_y}) - {reason} (no debug image found)")
-    
+
+            # Add OCR mismatches to suspicious measurements
+            for mismatch in ocr_mismatches:
+                suspicious_measurements.append({
+                    'text': '?',  # Placeholder text
+                    'debug_image': mismatch['debug_image'],
+                    'index': mismatch['index'],
+                    'reason': mismatch['reason']
+                })
+                pos_x = int(mismatch['center'][0])
+                pos_y = int(mismatch['center'][1])
+                print(f"  [{mismatch['index']}] '?' at ({pos_x}, {pos_y}) - {mismatch['reason']}")
+
             # Verify with Claude if any suspicious measurements found
             if suspicious_measurements:
                 corrections = verify_measurements_with_claude(suspicious_measurements, image_dir)
                 if corrections:
-                    applied = apply_claude_corrections(measurements_list, corrections)
+                    applied, invalid_indices = apply_claude_corrections(measurements_list, corrections)
                     print(f"\n{applied} measurements corrected by Claude")
+
+                    # Remove invalid measurements (in reverse order to preserve indices)
+                    if invalid_indices:
+                        invalid_indices_sorted = sorted(invalid_indices, reverse=True)
+                        for idx in invalid_indices_sorted:
+                            removed_meas = measurements_list.pop(idx)
+                            print(f"  Removed INVALID measurement at index {idx}: '{removed_meas['text']}' - {removed_meas['claude_reason']}")
+                        print(f"\n{len(invalid_indices)} invalid measurements removed by Claude verification")
+
+                        # Rebuild measurement_texts list to stay in sync
+                        measurement_texts = [m['text'] for m in measurements_list]
             else:
                 print("  No suspicious measurements found - all OCR looks good!")
-    
+
+        # Filter out invalid measurements (non-numeric text from Claude)
+        # Keep only measurements that look like actual dimensions
+        filtered_measurements = []
+        for meas in measurements_list:
+            text = meas['text']
+            # Keep if contains digits or fractions
+            if any(c.isdigit() for c in text) or '/' in text:
+                filtered_measurements.append(meas)
+            else:
+                print(f"  [FILTERED OUT] '{text}' at ({meas['position'][0]:.0f}, {meas['position'][1]:.0f}) - not a valid measurement")
+
+        if len(filtered_measurements) < len(measurements_list):
+            print(f"\nFiltered measurements: {len(filtered_measurements)}/{len(measurements_list)} kept")
+            measurements_list = filtered_measurements
+            measurement_texts = [m['text'] for m in measurements_list]
+
+        # Apply min_value filter after Claude verification
+        print(f"\nApplying min_value threshold ({VALIDATION_CONFIG['min_value']} inches)...")
+        min_value_filtered = []
+        for meas in measurements_list:
+            text = meas['text']
+            # Extract leading digit from measurement (before space or fraction)
+            # Match patterns like: "1", "1 1/2", "18 5/8", but NOT "1/2" or "5/8"
+            match = re.match(r'^(\d+)(?:\s|$)', text)
+            if match:
+                # Has a whole number part - check if it meets threshold
+                leading_digit = int(match.group(1))
+                if leading_digit >= VALIDATION_CONFIG['min_value']:
+                    min_value_filtered.append(meas)
+                else:
+                    print(f"  [FILTERED OUT] '{text}' at ({meas['position'][0]:.0f}, {meas['position'][1]:.0f}) - below min_value threshold of {VALIDATION_CONFIG['min_value']}")
+            else:
+                # No whole number part (pure fraction like "1/2") - keep it
+                min_value_filtered.append(meas)
+
+        if len(min_value_filtered) < len(measurements_list):
+            print(f"\nMin_value filtered: {len(min_value_filtered)}/{len(measurements_list)} kept")
+            measurements_list = min_value_filtered
+            measurement_texts = [m['text'] for m in measurements_list]
+
         # Phase 3: Classify measurements (WIDTH/HEIGHT/UNCLASSIFIED)
         measurement_categories = None
         classified = None
         if measurements_list:
+            # Start Phase 3 logging
+            phase_logger.switch_phase("3", "classification")
+
             print("\n=== PHASE 3: Classifying Measurements ===")
             print("Finding dimension lines near each measurement...")
     
@@ -275,8 +439,12 @@ def main(start_opening_number=1):
             # Load image for line detection
             image_cv = cv2.imread(img_path)
             if image_cv is not None:
-                classified, measurement_categories = classify_measurements_by_lines(image_cv, measurements_list)
-    
+                classified, measurement_categories = classify_measurements_by_lines(image_cv, measurements_list, image_path=img_path)
+
+                # Link categories back to measurements for visualization
+                for meas, category in zip(measurements_list, measurement_categories):
+                    meas['category'] = category
+
                 print(f"\nClassification Results:")
                 print(f"  WIDTH measurements: {len(classified['width'])}")
                 for w in classified['width']:
@@ -292,9 +460,14 @@ def main(start_opening_number=1):
         # Phase 4: Pair measurements into cabinet openings
         paired_openings = []
         unpaired_heights_info = []
+        down_arrow_positions = []
+        bottom_width_line = None
         if measurement_categories and measurements_list:
+            # Start Phase 4 logging
+            phase_logger.switch_phase("4", "pairing")
+
             print("\n=== PHASE 4: Pairing Measurements into Cabinet Openings ===")
-            paired_openings, unpaired_heights_info = pair_measurements_by_proximity(measurement_categories, measurements_list, image_cv)
+            paired_openings, unpaired_heights_info, down_arrow_positions, bottom_width_line = pair_measurements_by_proximity(measurement_categories, measurements_list, image_cv, image_path)
     
             if paired_openings:
                 print("\nCABINET OPENING SPECIFICATIONS:")
@@ -343,6 +516,9 @@ def main(start_opening_number=1):
             print(f"  {count}x {meas}{category}")
     
         # Phase 5: Create visualization
+        # Start Phase 5 logging
+        phase_logger.switch_phase("5", "visualization")
+
         print("\n=== PHASE 5: Creating Visualization ===")
         create_visualization(
             image_path, merged_areas, measurement_texts, measurement_logic,
@@ -360,7 +536,9 @@ def main(start_opening_number=1):
             room_name=room_name,
             overlay_info=overlay_info,
             unpaired_heights_info=unpaired_heights_info,
-            start_opening_number=start_opening_number
+            start_opening_number=start_opening_number,
+            down_arrow_positions=down_arrow_positions,
+            bottom_width_line=bottom_width_line
         )
     
         # Save pairing results to JSON
@@ -416,10 +594,14 @@ def main(start_opening_number=1):
             print("=" * 80)
 
     finally:
-        # Restore stdout and close log file
+        # Restore stdout and close phase logger
         sys.stdout = old_stdout
-        tee.close()
-        print(f"\n[SAVED] Debug log: {log_file}")
+        phase_files = phase_logger.close()
+
+        # Print all created phase files
+        print(f"\n[SAVED] Debug logs split into {len(phase_files)} phase files:")
+        for phase_file in phase_files:
+            print(f"  - {os.path.basename(phase_file)}")
 
 
 def convert_inhouse_to_unified(inhouse_data, original_file_path, room_name, overlay_info):
