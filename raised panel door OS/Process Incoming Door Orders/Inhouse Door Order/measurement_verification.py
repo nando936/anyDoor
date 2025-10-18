@@ -192,7 +192,7 @@ def verify_measurement_at_center(image_path, center, bounds, texts, api_key, cen
         return (best_meas, actual_bounds)
 
 
-def verify_measurement_at_center_with_logic(image_path, center, bounds, texts, api_key, center_index=0, save_debug=False):
+def verify_measurement_at_center_with_logic(image_path, center, bounds, texts, api_key, center_index=0, save_debug=False, exclude_items=None):
     """Same as verify_measurement_at_center but returns (measurement, logic_description)
 
     Returns: ((measurement_value, actual_bounds, special_notation, raw_ocr_text), logic_description)
@@ -234,10 +234,10 @@ def verify_measurement_at_center_with_logic(image_path, center, bounds, texts, a
 
     # Save debug images if requested
     if save_debug:
-        # Extract page number from image path
+        # Extract page number from image path (handle both "page_5" and "page-5" formats)
         page_num = ""
-        if "page_" in image_path.lower():
-            page_match = re.search(r'page_(\d+)', image_path.lower())
+        if "page" in image_path.lower():
+            page_match = re.search(r'page[-_]?(\d+)', image_path.lower())
             if page_match:
                 page_num = f"page{page_match.group(1)}_"
 
@@ -285,13 +285,24 @@ def verify_measurement_at_center_with_logic(image_path, center, bounds, texts, a
     annotations = result['responses'][0].get('textAnnotations', [])
     if not annotations:
         print(f"  OCR: [No text detected in zoomed region]")
-        return None, "Zoom OCR detected no text (likely not a measurement)"
+        print(f"  → Flagging for Claude verification")
+        # Return special flag so Claude can verify if there's actually nothing there
+        return ('NEEDS_CLAUDE_VERIFICATION', None, None, '', False), "Phase 2 OCR found no text - needs Claude verification"
 
     full_text = annotations[0]['description']
     raw_full_text = full_text  # Store the completely raw OCR text before any processing
     # Debug: show raw text first
     print(f"  OCR raw: {repr(full_text)}")
     print(f"  OCR: '{full_text.replace(chr(10), ' ')}'")
+
+    # Strip arrow symbols from full_text (but keep in raw_full_text for bounds calculation)
+    # Arrow symbols: → ← ↑ ↓ (U+2192, U+2190, U+2191, U+2193)
+    arrow_symbols = ['\u2192', '\u2190', '\u2191', '\u2193']  # → ← ↑ ↓
+    original_full_text = full_text
+    for arrow in arrow_symbols:
+        full_text = full_text.replace(arrow, '')
+    if full_text != original_full_text:
+        print(f"  Stripped arrow symbols: '{original_full_text}' → '{full_text}'")
 
     # Skip if this is clearly not a measurement
     if re.match(r'^[A-Z]+\d+$', full_text.strip()):
@@ -327,7 +338,7 @@ def verify_measurement_at_center_with_logic(image_path, center, bounds, texts, a
     if len(individual_items) > 0 and len(individual_items) < 10:
         print(f"    Found {len(individual_items)} individual items after filtering:")
         for item in individual_items:
-            print(f"      '{item['text']}'")
+            print(f"      '{item['text']}' at ({item['x']:.0f}, {item['y']:.0f})")
 
     # Filter out excluded patterns (like "OR" from "or 2")
     from measurement_config import EXCLUDE_PATTERNS
@@ -420,7 +431,8 @@ def verify_measurement_at_center_with_logic(image_path, center, bounds, texts, a
                 continue
 
             # Check if on same line (y within threshold) and close horizontally (x within threshold)
-            if abs(other['y'] - item['y']) < y_threshold:
+            y_dist = abs(other['y'] - item['y'])
+            if y_dist <= y_threshold:
                 # Check if it's to the right and close enough
                 x_dist = other['x'] - group[-1]['x']  # Distance from rightmost item in group
                 if 0 < x_dist < x_threshold:
@@ -468,8 +480,12 @@ def verify_measurement_at_center_with_logic(image_path, center, bounds, texts, a
     for mg in measurement_groups:
         # Clean text (remove leading/trailing punctuation)
         cleaned_text = mg['text'].strip()
-        # Remove leading/trailing dashes and commas (including Unicode minus sign and en dash)
-        cleaned_text = cleaned_text.strip('—−–-.,')
+        # Remove leading/trailing dashes, commas, and asterisks (including Unicode minus sign and en dash)
+        cleaned_text = cleaned_text.strip('—−–-.,*')
+        # Strip arrow symbols (→ ← ↑ ↓)
+        for arrow_sym in ['\u2192', '\u2190', '\u2191', '\u2193']:
+            cleaned_text = cleaned_text.replace(arrow_sym, '')
+        cleaned_text = cleaned_text.strip()
         # Replace internal commas with spaces
         cleaned_text = cleaned_text.replace(',', ' ')
         # Remove apostrophes (they shouldn't be in measurements)
@@ -482,9 +498,37 @@ def verify_measurement_at_center_with_logic(image_path, center, bounds, texts, a
         cleaned_text = cleaned_text.strip()
 
         # Filter out components with leading/trailing dashes or punctuation-only
+        # BUT keep special notation components (F, O) for bounds calculation
         cleaned_components = []
-        for comp in mg['components']:
+
+        # Find first component that contains a digit
+        first_digit_index = None
+        for idx, comp in enumerate(mg['components']):
+            if any(c.isdigit() for c in comp['text']):
+                first_digit_index = idx
+                break
+
+        for idx, comp in enumerate(mg['components']):
             comp_text = comp['text']
+
+            # Skip leading text-only items (before first digit)
+            if first_digit_index is not None and idx < first_digit_index:
+                # This component comes BEFORE the first digit
+                if not any(c.isdigit() for c in comp_text):
+                    # Text-only component before number - skip it
+                    print(f"    Filtered leading notation '{comp_text}' (before first number)")
+                    continue
+
+            # Special notation (F for finished size, O for opening size) - always keep
+            if comp_text in ['F', 'O']:
+                cleaned_components.append(comp)
+                continue
+
+            # Skip arrow symbols (→ ← ↑ ↓)
+            if comp_text in ['\u2192', '\u2190', '\u2191', '\u2193', '→', '←', '↑', '↓']:
+                print(f"    Filtered arrow symbol: '{comp_text}'")
+                continue
+
             # Skip if starts or ends with dash (vertices include the dash)
             if comp_text and (comp_text[0] in '—−–-' or comp_text[-1] in '—−–-'):
                 continue
@@ -497,26 +541,160 @@ def verify_measurement_at_center_with_logic(image_path, center, bounds, texts, a
             print(f"    Filtered components: {len(mg['components'])} -> {len(cleaned_components)}")
         mg['components'] = cleaned_components
 
+        # Rebuild cleaned_text from filtered components
+        if len(cleaned_components) > 0:
+            parts = []
+            for i, comp in enumerate(cleaned_components):
+                text = comp['text']
+                if i == 0:
+                    parts.append(text)
+                elif text == '/':
+                    parts.append('/')
+                elif i > 0 and cleaned_components[i-1]['text'] == '/':
+                    parts.append(text)
+                else:
+                    parts.append(' ' + text)
+            cleaned_text = ''.join(parts)
+            # Remove trailing F/O notations from displayed text
+            cleaned_text = cleaned_text.rstrip(' F').rstrip('F')
+            cleaned_text = cleaned_text.rstrip(' O').rstrip('O')
+            cleaned_text = cleaned_text.strip()
+
         # If it has any numbers, accept it as a measurement
         if any(c.isdigit() for c in cleaned_text):
             mg['cleaned_text'] = cleaned_text
             valid_measurements.append(mg)
 
     if not valid_measurements:
-        logic_steps.append(f"Position-grouped: {[mg['text'] for mg in measurement_groups]}")
-        logic_steps.append("No measurements with numbers found")
-        return None, " | ".join(logic_steps)
+        # Check if Phase 1 had digits but Phase 2 doesn't - this indicates OCR misread
+        phase1_had_digits = any(any(c.isdigit() for c in text) for text in texts)
 
-    # Find closest to center - adjust for zoom
-    crop_cx = (cx - crop_x1) * zoom_factor  # Scale center position for zoomed image
+        if phase1_had_digits:
+            # Phase 1 detected numbers but Phase 2 verification failed
+            # Return special flag for Claude verification
+            print(f"  [OCR MISMATCH] Phase 1 had digits {texts} but Phase 2 found: {[mg['text'] for mg in measurement_groups]}")
+            print(f"  → Flagging for Claude verification")
+            logic_steps.append("Phase 1 had digits but Phase 2 verification failed")
+            logic_steps.append("Needs Claude verification")
+            # Return special tuple with 'NEEDS_CLAUDE_VERIFICATION' flag
+            return ('NEEDS_CLAUDE_VERIFICATION', None, None, full_text, False), " | ".join(logic_steps)
+        else:
+            logic_steps.append(f"Position-grouped: {[mg['text'] for mg in measurement_groups]}")
+            logic_steps.append("No measurements with numbers found")
+            return None, " | ".join(logic_steps)
+
+    # Check for special notations
+    special_notation = None
+    is_finished_size = False
+
+    for mg in measurement_groups:
+        # NH can be anywhere - check in original text
+        if 'NH' in mg['text']:
+            special_notation = 'NH'
+            break
+
+        # F must be AFTER first digit - check in cleaned components
+        if 'components' in mg and len(mg['components']) > 0:
+            # Find first component with digit
+            first_digit_idx = None
+            for idx, comp in enumerate(mg['components']):
+                if any(c.isdigit() for c in comp['text']):
+                    first_digit_idx = idx
+                    break
+
+            # Check for F only AFTER first digit
+            if first_digit_idx is not None:
+                for idx, comp in enumerate(mg['components']):
+                    if idx > first_digit_idx and comp['text'] == 'F':
+                        is_finished_size = True
+                        print(f"  Found finished size indicator: F")
+                        break
+
+    # Check if multiple measurements are vertically separated (on different lines)
+    # If yes, return ALL of them; if no, pick closest to avoid duplicates
+    if len(valid_measurements) > 1:
+        # Calculate Y distances between measurements
+        y_positions = [vm['y'] for vm in valid_measurements]
+        max_y_diff = max(y_positions) - min(y_positions)
+        # Threshold: 30px unscaled (measurements on different lines should be ~30-40px apart in zoomed view)
+        y_separation_threshold = 30 * zoom_factor
+
+        if max_y_diff > y_separation_threshold:
+            # Measurements on different lines - return ALL
+            print(f"  Multiple measurements on different lines (Y-diff={max_y_diff:.0f}px > {y_separation_threshold:.0f}px)")
+            print(f"  Returning ALL {len(valid_measurements)} measurements")
+
+            # Helper function to calculate bounds for a measurement
+            def calculate_bounds_for_measurement(meas):
+                measurement_value = meas.get('cleaned_text', meas['text'])
+                raw_ocr_text = meas.get('raw_full_text', measurement_value)
+
+                actual_bounds = None
+                if 'components' in meas and meas['components']:
+                    min_x = float('inf')
+                    max_x = float('-inf')
+                    min_y = float('inf')
+                    max_y = float('-inf')
+
+                    comp_bboxes = []
+                    for comp in meas['components']:
+                        if 'vertices' in comp:
+                            v_x_coords = [v.get('x', 0) for v in comp['vertices']]
+                            v_y_coords = [v.get('y', 0) for v in comp['vertices']]
+
+                            comp_min_x = min(v_x_coords)
+                            comp_max_x = max(v_x_coords)
+                            comp_min_y = min(v_y_coords)
+                            comp_max_y = max(v_y_coords)
+
+                            comp_bboxes.append({
+                                'min_x': comp_min_x,
+                                'max_x': comp_max_x,
+                                'min_y': comp_min_y,
+                                'max_y': comp_max_y
+                            })
+
+                            min_y = min(min_y, comp_min_y)
+                            max_y = max(max_y, comp_max_y)
+
+                    if comp_bboxes:
+                        leftmost_x = min(bbox['min_x'] for bbox in comp_bboxes)
+                        rightmost_x = max(bbox['max_x'] for bbox in comp_bboxes)
+                        ocr_span = rightmost_x - leftmost_x
+                        ocr_center = (leftmost_x + rightmost_x) / 2
+
+                        # Use OCR span directly since components now include F/O notation
+                        estimated_text_width = ocr_span
+
+                        min_x = ocr_center - estimated_text_width / 2
+                        max_x = ocr_center + estimated_text_width / 2
+
+                        actual_bounds = {
+                            'left': crop_x1 + (min_x / zoom_factor),
+                            'right': crop_x1 + (max_x / zoom_factor),
+                            'top': crop_y1 + (min_y / zoom_factor),
+                            'bottom': crop_y1 + (max_y / zoom_factor)
+                        }
+
+                return (measurement_value, actual_bounds, special_notation, raw_ocr_text, is_finished_size)
+
+            # Build list of all measurements
+            results = []
+            for vm in valid_measurements:
+                result = calculate_bounds_for_measurement(vm)
+                results.append(result)
+                print(f"    Returning: '{result[0]}'")
+
+            logic_steps.append(f"Found {len(valid_measurements)} measurements on different lines")
+            logic_steps.append(f"Returning all {len(results)} measurements")
+            return results, " | ".join(logic_steps)
+
+    # Single measurement OR multiple on same line (pick closest to avoid duplicates)
+    crop_cx = (cx - crop_x1) * zoom_factor
     crop_cy = (cy - crop_y1) * zoom_factor
 
     best_meas = None
     best_dist = float('inf')
-
-    # Also check for special notations like "NH" and "F" (finished size)
-    special_notation = None
-    is_finished_size = False
 
     for vm in valid_measurements:
         dist = ((vm['x'] - crop_cx) ** 2 + (vm['y'] - crop_cy) ** 2) ** 0.5
@@ -526,21 +704,25 @@ def verify_measurement_at_center_with_logic(image_path, center, bounds, texts, a
             best_dist = dist
             best_meas = vm
 
-    # Check if "NH" appears in the original OCR text (before measurement groups)
-    for mg in measurement_groups:
-        if 'NH' in mg['text']:
-            special_notation = 'NH'
-            break
-        # Check for "F" suffix indicating finished size
-        if 'F' in mg['text'] or ' F' in mg['text']:
-            is_finished_size = True
-            print(f"  Found finished size indicator: F")
-
     if best_meas:
         # Use cleaned text for the measurement value
         measurement_value = best_meas.get('cleaned_text', best_meas['text'])
         raw_ocr_text = best_meas.get('raw_full_text', measurement_value)
         print(f"  Chose closest: '{measurement_value}'")
+
+        # Check if this measurement should be excluded (e.g., X2, OL, room names)
+        if exclude_items:
+            for exc in exclude_items:
+                if 'text' in exc and 'x' in exc and 'y' in exc:
+                    # Check if extracted text matches excluded text and position is close
+                    # Convert zoomed coordinates back to original image coordinates
+                    original_x = crop_x1 + (best_meas['x'] / zoom_factor)
+                    original_y = crop_y1 + (best_meas['y'] / zoom_factor)
+                    if (exc['text'].upper() == measurement_value.upper() and
+                        abs(exc['x'] - original_x) < 50 and
+                        abs(exc['y'] - original_y) < 50):
+                        print(f"  Excluding: '{measurement_value}' matches exclude_items")
+                        return None, "Excluded by exclude_items (matches room name, overlay, or label)"
 
         # Calculate actual bounds from the components
         actual_bounds = None
@@ -609,8 +791,9 @@ def verify_measurement_at_center_with_logic(image_path, center, bounds, texts, a
                 else:
                     pixels_per_char = 20  # Fallback
 
-                # Calculate width for just the cleaned text characters
-                estimated_text_width = char_count * pixels_per_char
+                # Calculate width based on OCR component vertices (which now include F/O notation)
+                # Use the OCR span directly since components include all necessary characters
+                estimated_text_width = ocr_span
 
                 # Center the bounds around the OCR center
                 min_x = ocr_center - estimated_text_width / 2

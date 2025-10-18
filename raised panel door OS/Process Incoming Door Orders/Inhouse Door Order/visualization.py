@@ -1363,7 +1363,9 @@ def create_visualization(
                 if height_is_finished:
                     height_text = f"{height_text}(F)"
 
-                dim_text = f"{width_text} W x {height_text} H"
+                # Add quantity to dimension text if > 1
+                quantity_text = f" x{opening.get('quantity', 1)}" if opening.get('quantity', 1) > 1 else ""
+                dim_text = f"{width_text} W x {height_text} H{quantity_text}"
 
                 has_notation = 'notation' in opening and opening['notation']
                 # Format notation with quotes and all caps, spell out abbreviations
@@ -1481,10 +1483,13 @@ def create_visualization(
                 width_text = f"{opening['width']}(F)" if width_is_finished else opening['width']
                 height_text = f"{opening['height']}(F)" if height_is_finished else opening['height']
 
+                # Add quantity if > 1
+                quantity_text = f" x{opening.get('quantity', 1)}" if opening.get('quantity', 1) > 1 else ""
+
                 if meas_id:
-                    spec_text = f"{meas_id} {width_text} x {height_text}"
+                    spec_text = f"{meas_id} {width_text} x {height_text}{quantity_text}"
                 else:
-                    spec_text = f"{width_text} x {height_text}"
+                    spec_text = f"{width_text} x {height_text}{quantity_text}"
 
                 if 'notation' in opening and opening['notation']:
                     notation_value = opening["notation"].upper()
@@ -1709,10 +1714,13 @@ def create_visualization(
                 width_text = f"{opening['width']}(F)" if width_is_finished else opening['width']
                 height_text = f"{opening['height']}(F)" if height_is_finished else opening['height']
 
+                # Add quantity if > 1
+                quantity_text = f" x{opening.get('quantity', 1)}" if opening.get('quantity', 1) > 1 else ""
+
                 if meas_id:
-                    spec_text = f"{meas_id} {width_text} x {height_text}"
+                    spec_text = f"{meas_id} {width_text} x {height_text}{quantity_text}"
                 else:
-                    spec_text = f"{width_text} x {height_text}"
+                    spec_text = f"{width_text} x {height_text}{quantity_text}"
 
                 # Add notation if present (in quotes, all caps, red color)
                 notation_part = None

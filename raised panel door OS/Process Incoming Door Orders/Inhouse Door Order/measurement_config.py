@@ -60,3 +60,6 @@ OVERLAY_PATTERN = r'(\d+/\d+\s+OL)'
 
 # Customer quantity notation pattern (e.g., "1 or 2", "2 or 3")
 QUANTITY_NOTATION_PATTERN = r'\d+\s+or\s+\d+'
+
+# Multiplier notation pattern (e.g., "X2", "2X", "x2", "2x")
+X2_MULTIPLIER_PATTERN = r'([Xx]2|2[Xx])'

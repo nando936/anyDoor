@@ -147,7 +147,7 @@ def main(start_opening_number=1):
         print(f"{'='*60}")
 
         # Phase 1: Find interest areas
-        interest_areas, room_name, overlay_info, opencv_regions = find_interest_areas(image_path, api_key)
+        interest_areas, room_name, overlay_info, opencv_regions, exclude_items, x2_multiplier = find_interest_areas(image_path, api_key)
 
         if not interest_areas:
             print("[WARNING] No interest areas found")
@@ -174,7 +174,8 @@ def main(start_opening_number=1):
                 area['texts'],
                 api_key,
                 center_index=i,
-                save_debug=True
+                save_debug=True,
+                exclude_items=exclude_items
             )
 
             if result and result[0]:
@@ -440,7 +441,7 @@ def main(start_opening_number=1):
             # Load image for line detection
             image_cv = cv2.imread(img_path)
             if image_cv is not None:
-                classified, measurement_categories = classify_measurements_by_lines(image_cv, measurements_list, image_path=img_path)
+                classified, measurement_categories = classify_measurements_by_lines(image_cv, measurements_list, image_path=img_path, exclude_items=exclude_items, all_measurements=measurements_list)
 
                 # Link categories back to measurements for visualization
                 for meas, category in zip(measurements_list, measurement_categories):
@@ -468,13 +469,14 @@ def main(start_opening_number=1):
             phase_logger.switch_phase("4", "pairing")
 
             print("\n=== PHASE 4: Pairing Measurements into Cabinet Openings ===")
-            paired_openings, unpaired_heights_info, down_arrow_positions, bottom_width_line = pair_measurements_by_proximity(measurement_categories, measurements_list, image_cv, image_path)
+            paired_openings, unpaired_heights_info, down_arrow_positions, bottom_width_line = pair_measurements_by_proximity(measurement_categories, measurements_list, image_cv, image_path, exclude_items, x2_multiplier)
     
             if paired_openings:
                 print("\nCABINET OPENING SPECIFICATIONS:")
                 print("-" * 60)
                 for i, opening in enumerate(paired_openings, start_opening_number):
-                    print(f"Opening {i}: {opening['width']} W × {opening['height']} H")
+                    quantity_text = f" x {opening.get('quantity', 1)}" if opening.get('quantity', 1) > 1 else ""
+                    print(f"Opening {i}: {opening['width']} W × {opening['height']} H{quantity_text}")
                     print(f"  Width at: ({opening['width_pos'][0]:.0f}, {opening['width_pos'][1]:.0f})")
                     print(f"  Height at: ({opening['height_pos'][0]:.0f}, {opening['height_pos'][1]:.0f})")
                     print(f"  Pairing distance: {opening['distance']:.0f}px")
@@ -562,7 +564,9 @@ def main(start_opening_number=1):
                         'number': i,
                         'width': opening['width'],
                         'height': opening['height'],
+                        'quantity': opening.get('quantity', 1),
                         'specification': f"{opening['width']} W × {opening['height']} H" +
+                                       (f" x {opening.get('quantity', 1)}" if opening.get('quantity', 1) > 1 else "") +
                                        (" NO HINGES" if opening.get('notation') == 'NH' else ""),
                         'width_position': opening['width_pos'],
                         'height_position': opening['height_pos'],

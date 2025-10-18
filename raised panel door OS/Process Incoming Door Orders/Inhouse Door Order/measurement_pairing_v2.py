@@ -187,7 +187,7 @@ def find_clear_position_for_marker(intersection_x, intersection_y, width_pos, he
     return int(best_position[0]), int(best_position[1])
 
 
-def find_down_arrows_near_heights(image, heights):
+def find_down_arrows_near_heights(image, heights, all_measurements, exclude_items=None):
     """
     Find down arrows below each height measurement (includes HEIGHT and UNCLASSIFIED).
     Returns a list of Y-coordinates where down arrows are found.
@@ -195,6 +195,8 @@ def find_down_arrows_near_heights(image, heights):
     Args:
         image: The source image
         heights: List of height measurement dicts (HEIGHT + UNCLASSIFIED) with 'x', 'y', and optionally 'height_extent'
+        all_measurements: List of all measurements (used to exclude text areas from arrow search)
+        exclude_items: List of non-measurement items (OL/room names) to exclude from arrow detection
     """
     import cv2
     import numpy as np
@@ -247,6 +249,60 @@ def find_down_arrows_near_heights(image, heights):
         # Apply morphological operations
         kernel = np.ones((2,2), np.uint8)
         green_mask = cv2.morphologyEx(green_mask, cv2.MORPH_CLOSE, kernel)
+
+        # Exclude other measurement text areas from search to avoid detecting arrows in text
+        for other_meas in all_measurements:
+            # Skip the current target height measurement
+            if other_meas.get('text') == height.get('text') and \
+               abs(other_meas.get('x', 0) - height.get('x', 0)) < 5 and \
+               abs(other_meas.get('y', 0) - height.get('y', 0)) < 5:
+                continue
+
+            if 'bounds' not in other_meas or not other_meas['bounds']:
+                continue
+
+            bounds = other_meas['bounds']
+            # Calculate intersection with search ROI
+            intersect_x1 = max(roi_x1, int(bounds['left']))
+            intersect_y1 = max(roi_y1, int(bounds['top']))
+            intersect_x2 = min(roi_x2, int(bounds['right']))
+            intersect_y2 = min(roi_y2, int(bounds['bottom']))
+
+            if intersect_x1 < intersect_x2 and intersect_y1 < intersect_y2:
+                # This text region intersects the search ROI - exclude it
+                roi_ix1 = intersect_x1 - roi_x1
+                roi_iy1 = intersect_y1 - roi_y1
+                roi_ix2 = intersect_x2 - roi_x1
+                roi_iy2 = intersect_y2 - roi_y1
+                # Zero out this region in the mask
+                green_mask[roi_iy1:roi_iy2, roi_ix1:roi_ix2] = 0
+
+        # Also exclude OL text and room names from search
+        if exclude_items:
+            for excluded_item in exclude_items:
+                if 'x' not in excluded_item or 'y' not in excluded_item:
+                    continue
+
+                # Estimate text bounds (assume ~100px wide, ~30px tall around center)
+                ex = excluded_item['x']
+                ey = excluded_item['y']
+                text_width = 100
+                text_height = 30
+
+                # Calculate intersection with search ROI
+                intersect_x1 = max(roi_x1, int(ex - text_width/2))
+                intersect_y1 = max(roi_y1, int(ey - text_height/2))
+                intersect_x2 = min(roi_x2, int(ex + text_width/2))
+                intersect_y2 = min(roi_y2, int(ey + text_height/2))
+
+                if intersect_x1 < intersect_x2 and intersect_y1 < intersect_y2:
+                    # This OL/room text intersects the search ROI - exclude it
+                    roi_ix1 = intersect_x1 - roi_x1
+                    roi_iy1 = intersect_y1 - roi_y1
+                    roi_ix2 = intersect_x2 - roi_x1
+                    roi_iy2 = intersect_y2 - roi_y1
+                    # Zero out this region in the mask
+                    green_mask[roi_iy1:roi_iy2, roi_ix1:roi_ix2] = 0
 
         # Save debug images
         import os
@@ -310,8 +366,8 @@ def find_down_arrows_near_heights(image, heights):
         print(f"    Down arrow detected: {has_down_arrow}")
 
         if has_down_arrow:
-            # Found a down arrow - calculate apex position from detected lines
-            # Apex is at the topmost point where the two legs meet
+            # Found a down arrow - calculate visual center from detected lines
+            # Visual center is the midpoint between top and bottom of arrow
             all_y_coords = []
             all_x_coords = []
 
@@ -323,16 +379,18 @@ def find_down_arrows_near_heights(image, heights):
                 all_y_coords.extend([y1, y2])
                 all_x_coords.extend([x1, x2])
 
-            # Arrow apex is at the minimum Y (topmost point) in ROI coordinates
-            apex_y_roi = min(all_y_coords)
-            apex_x_roi = sum(all_x_coords) / len(all_x_coords)  # Average X position
+            # Visual center: midpoint between top and bottom of arrow in ROI coordinates
+            min_y_roi = min(all_y_coords)
+            max_y_roi = max(all_y_coords)
+            center_y_roi = (min_y_roi + max_y_roi) / 2
+            center_x_roi = sum(all_x_coords) / len(all_x_coords)  # Average X position
 
             # Convert from ROI coordinates to image coordinates
-            arrow_y = int(roi_y1 + apex_y_roi)
-            arrow_x = int(roi_x1 + apex_x_roi)
+            arrow_y = int(roi_y1 + center_y_roi)
+            arrow_x = int(roi_x1 + center_x_roi)
 
             down_arrow_positions.append((arrow_x, arrow_y))
-            print(f"    Added down arrow at ({arrow_x}, {arrow_y}) [apex from detected lines]")
+            print(f"    Added down arrow at ({arrow_x}, {arrow_y}) [visual center from detected lines]")
 
     return down_arrow_positions
 
@@ -383,7 +441,7 @@ def is_height_above_width_with_angle(height_pos, width_pos, hline_angle_degrees)
     return projection < 0  # Negative projection means "above"
 
 
-def pair_measurements_by_proximity(classified_measurements, all_measurements, image=None, image_path=None):
+def pair_measurements_by_proximity(classified_measurements, all_measurements, image=None, image_path=None, exclude_items=None, x2_multiplier=1):
     """
     V2 - New pairing logic
 
@@ -433,7 +491,7 @@ def pair_measurements_by_proximity(classified_measurements, all_measurements, im
 
     if not widths or not heights:
         print("  Cannot pair - need both widths and heights")
-        return [], []
+        return [], [], [], None
 
     # Sort by X position (left to right) first, then Y position (top to bottom)
     widths.sort(key=lambda w: (w['x'], w['y']))
@@ -447,7 +505,7 @@ def pair_measurements_by_proximity(classified_measurements, all_measurements, im
         import numpy as np
 
         # Find down arrows below height measurements
-        down_arrow_y_positions = find_down_arrows_near_heights(image, heights)
+        down_arrow_y_positions = find_down_arrows_near_heights(image, heights, all_measurements, exclude_items)
 
         # Store bottom width reference line for visualization
         bottom_width_line = None
@@ -770,7 +828,8 @@ def pair_measurements_by_proximity(classified_measurements, all_measurements, im
                         'width_angle': extent.get('angle', 0),
                         'width_hline_angle': extent.get('hline_angle', extent.get('angle', 0)),
                         'width_is_finished': width.get('is_finished_size', False),
-                        'height_is_finished': height.get('is_finished_size', False)
+                        'height_is_finished': height.get('is_finished_size', False),
+                        'quantity': x2_multiplier
                     }
 
                     # Add position_class if width has it (e.g., 'bottom')
@@ -971,7 +1030,8 @@ def pair_measurements_by_proximity(classified_measurements, all_measurements, im
                     'width_angle': extent.get('angle', 0) if extent else 0,
                     'width_hline_angle': width.get('h_line_angle', 0),
                     'width_is_finished': width.get('is_finished_size', False),
-                    'height_is_finished': closest_height.get('is_finished_size', False)
+                    'height_is_finished': closest_height.get('is_finished_size', False),
+                    'quantity': x2_multiplier
                 }
 
                 if 'notation' in closest_height:
@@ -1068,7 +1128,8 @@ def pair_measurements_by_proximity(classified_measurements, all_measurements, im
                 'width_angle': width_angle,
                 'width_hline_angle': width_hline_angle,
                 'width_is_finished': closest_width.get('is_finished_size', False),
-                'height_is_finished': height.get('is_finished_size', False)
+                'height_is_finished': height.get('is_finished_size', False),
+                'quantity': x2_multiplier
             }
 
             if 'notation' in height:

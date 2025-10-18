@@ -81,7 +81,7 @@ def extract_rotated_roi(image, x1, y1, x2, y2, angle_degrees, center_point):
     return roi, M_inv
 
 
-def detect_lines_in_roi(roi_image, roi_x_offset, roi_y_offset, inverse_transform=None):
+def detect_lines_in_roi(roi_image, roi_x_offset, roi_y_offset, inverse_transform=None, all_measurements=None, exclude_items=None, measurement=None, roi_x1=None, roi_y1=None, roi_x2=None, roi_y2=None):
     """Detect lines in an ROI and return coordinates adjusted to full image
 
     Args:
@@ -89,6 +89,10 @@ def detect_lines_in_roi(roi_image, roi_x_offset, roi_y_offset, inverse_transform
         roi_x_offset: X offset for simple translation (used when inverse_transform is None)
         roi_y_offset: Y offset for simple translation (used when inverse_transform is None)
         inverse_transform: Optional 3x3 perspective transform matrix to map ROI coords to image coords
+        all_measurements: List of all measurements for text exclusion masking
+        exclude_items: List of items to exclude (OL text, room names)
+        measurement: Current measurement being analyzed
+        roi_x1, roi_y1, roi_x2, roi_y2: ROI bounds in image coordinates
 
     Returns:
         List of line coordinates in full image space
@@ -105,6 +109,62 @@ def detect_lines_in_roi(roi_image, roi_x_offset, roi_y_offset, inverse_transform
     # Apply morphological operations to connect nearby pixels
     kernel = np.ones((2,2), np.uint8)
     green_mask = cv2.morphologyEx(green_mask, cv2.MORPH_CLOSE, kernel)
+
+    # Apply text exclusion masking to prevent detecting lines in text regions
+    # Exclude other measurement text areas from line detection
+    if all_measurements is not None and roi_x1 is not None and roi_y1 is not None and roi_x2 is not None and roi_y2 is not None:
+        for other_meas in all_measurements:
+            # Skip the current measurement being analyzed
+            if measurement and other_meas.get('text') == measurement.get('text') and \
+               abs(other_meas.get('x', 0) - measurement.get('x', 0)) < 5 and \
+               abs(other_meas.get('y', 0) - measurement.get('y', 0)) < 5:
+                continue
+
+            if 'bounds' not in other_meas or not other_meas['bounds']:
+                continue
+
+            bounds = other_meas['bounds']
+            # Calculate intersection with ROI
+            intersect_x1 = max(roi_x1, int(bounds['left']))
+            intersect_y1 = max(roi_y1, int(bounds['top']))
+            intersect_x2 = min(roi_x2, int(bounds['right']))
+            intersect_y2 = min(roi_y2, int(bounds['bottom']))
+
+            if intersect_x1 < intersect_x2 and intersect_y1 < intersect_y2:
+                # Convert to ROI-relative coordinates
+                roi_ix1 = intersect_x1 - roi_x1
+                roi_iy1 = intersect_y1 - roi_y1
+                roi_ix2 = intersect_x2 - roi_x1
+                roi_iy2 = intersect_y2 - roi_y1
+                # Zero out this region in the mask
+                green_mask[roi_iy1:roi_iy2, roi_ix1:roi_ix2] = 0
+
+    # Also exclude OL text and room names from line detection
+    if exclude_items is not None and roi_x1 is not None and roi_y1 is not None and roi_x2 is not None and roi_y2 is not None:
+        for excluded_item in exclude_items:
+            if 'x' not in excluded_item or 'y' not in excluded_item:
+                continue
+
+            # Estimate text bounds
+            ex = excluded_item['x']
+            ey = excluded_item['y']
+            text_width = 100
+            text_height = 30
+
+            # Calculate intersection with ROI
+            intersect_x1 = max(roi_x1, int(ex - text_width/2))
+            intersect_y1 = max(roi_y1, int(ey - text_height/2))
+            intersect_x2 = min(roi_x2, int(ex + text_width/2))
+            intersect_y2 = min(roi_y2, int(ey + text_height/2))
+
+            if intersect_x1 < intersect_x2 and intersect_y1 < intersect_y2:
+                # Convert to ROI-relative coordinates
+                roi_ix1 = intersect_x1 - roi_x1
+                roi_iy1 = intersect_y1 - roi_y1
+                roi_ix2 = intersect_x2 - roi_x1
+                roi_iy2 = intersect_y2 - roi_y1
+                # Zero out this region in the mask
+                green_mask[roi_iy1:roi_iy2, roi_ix1:roi_ix2] = 0
 
     # Detect edges only on the green-filtered image
     edges = cv2.Canny(green_mask, 30, 100)
@@ -150,8 +210,17 @@ def detect_lines_in_roi(roi_image, roi_x_offset, roi_y_offset, inverse_transform
     return []
 
 
-def find_lines_near_measurement(image, measurement, save_roi_debug=False, image_path=None):
-    """Find lines near a specific measurement position that match the text color"""
+def find_lines_near_measurement(image, measurement, save_roi_debug=False, image_path=None, exclude_items=None, all_measurements=None):
+    """Find lines near a specific measurement position that match the text color
+
+    Args:
+        image: Source image
+        measurement: Measurement dict with position, text, bounds
+        save_roi_debug: Whether to save debug ROI images
+        image_path: Path to image for debug output
+        exclude_items: List of items to exclude from arrow detection (OL text, room names)
+        all_measurements: List of all measurements for text exclusion
+    """
     import os
 
     x = int(measurement['position'][0])
@@ -273,10 +342,11 @@ def find_lines_near_measurement(image, measurement, save_roi_debug=False, image_
     vertical_lines = []
 
     # Helper function to detect arrows in an ROI
-    def detect_arrow_in_roi(roi_image, direction):
+    def detect_arrow_in_roi(roi_image, direction, roi_x1=None, roi_y1=None, roi_x2=None, roi_y2=None):
         """
         Detect arrow pointing in specified direction by looking for converging lines
         direction: 'up', 'down', 'left', 'right'
+        roi_x1, roi_y1, roi_x2, roi_y2: ROI bounds in full image coordinates (for text exclusion)
 
         Returns: (has_correct_arrow, has_wrong_arrow)
             has_correct_arrow: True if arrow pointing correct direction found
@@ -294,6 +364,61 @@ def find_lines_near_measurement(image, measurement, save_roi_debug=False, image_
         # Apply morphological operations to connect nearby pixels
         kernel = np.ones((2,2), np.uint8)
         green_mask = cv2.morphologyEx(green_mask, cv2.MORPH_CLOSE, kernel)
+
+        # Exclude other measurement text areas from arrow detection to avoid false positives
+        if roi_x1 is not None and roi_y1 is not None and all_measurements:
+            for other_meas in all_measurements:
+                # Skip the current measurement
+                if other_meas.get('text') == measurement.get('text') and \
+                   abs(other_meas.get('x', 0) - measurement.get('x', 0)) < 5 and \
+                   abs(other_meas.get('y', 0) - measurement.get('y', 0)) < 5:
+                    continue
+
+                if 'bounds' not in other_meas or not other_meas['bounds']:
+                    continue
+
+                bounds = other_meas['bounds']
+                # Calculate intersection with ROI
+                intersect_x1 = max(roi_x1, int(bounds['left']))
+                intersect_y1 = max(roi_y1, int(bounds['top']))
+                intersect_x2 = min(roi_x2, int(bounds['right']))
+                intersect_y2 = min(roi_y2, int(bounds['bottom']))
+
+                if intersect_x1 < intersect_x2 and intersect_y1 < intersect_y2:
+                    # This text region intersects the ROI - exclude it from mask
+                    roi_ix1 = intersect_x1 - roi_x1
+                    roi_iy1 = intersect_y1 - roi_y1
+                    roi_ix2 = intersect_x2 - roi_x1
+                    roi_iy2 = intersect_y2 - roi_y1
+                    # Zero out this region in the mask
+                    green_mask[roi_iy1:roi_iy2, roi_ix1:roi_ix2] = 0
+
+        # Also exclude OL text and room names from arrow detection
+        if roi_x1 is not None and roi_y1 is not None and exclude_items:
+            for excluded_item in exclude_items:
+                if 'x' not in excluded_item or 'y' not in excluded_item:
+                    continue
+
+                # Estimate text bounds (assume ~100px wide, ~30px tall around center)
+                ex = excluded_item['x']
+                ey = excluded_item['y']
+                text_width_excl = 100
+                text_height_excl = 30
+
+                # Calculate intersection with ROI
+                intersect_x1 = max(roi_x1, int(ex - text_width_excl/2))
+                intersect_y1 = max(roi_y1, int(ey - text_height_excl/2))
+                intersect_x2 = min(roi_x2, int(ex + text_width_excl/2))
+                intersect_y2 = min(roi_y2, int(ey + text_height_excl/2))
+
+                if intersect_x1 < intersect_x2 and intersect_y1 < intersect_y2:
+                    # This OL/room text intersects the ROI - exclude it from mask
+                    roi_ix1 = intersect_x1 - roi_x1
+                    roi_iy1 = intersect_y1 - roi_y1
+                    roi_ix2 = intersect_x2 - roi_x1
+                    roi_iy2 = intersect_y2 - roi_y1
+                    # Zero out this region in the mask
+                    green_mask[roi_iy1:roi_iy2, roi_ix1:roi_ix2] = 0
 
         # Detect edges only on the green-filtered image
         edges = cv2.Canny(green_mask, 30, 100)
@@ -443,7 +568,10 @@ def find_lines_near_measurement(image, measurement, save_roi_debug=False, image_
         if DEBUG_MODE:
             print(f"      ACTUAL Left H-ROI coords: x=[{h_left_x1}, {h_left_x2}], y=[{h_left_y1}, {h_left_y2}]")
 
-        left_h_lines = detect_lines_in_roi(h_left_roi, h_left_x1, h_left_y1, h_left_M_inv)
+        left_h_lines = detect_lines_in_roi(h_left_roi, h_left_x1, h_left_y1, h_left_M_inv,
+                                           all_measurements=all_measurements, exclude_items=exclude_items,
+                                           measurement=measurement, roi_x1=h_left_x1, roi_y1=h_left_y1,
+                                           roi_x2=h_left_x2, roi_y2=h_left_y2)
         print(f"      Left H-ROI: shape={h_left_roi.shape}, found {len(left_h_lines)} lines")
 
         # Save debug image of left H-ROI with detected lines
@@ -458,7 +586,7 @@ def find_lines_near_measurement(image, measurement, save_roi_debug=False, image_
 
         # If no lines found, try arrow detection
         if not left_h_lines:
-            has_left_arrow, _ = detect_arrow_in_roi(h_left_roi, 'left')  # Ignore wrong-direction for now
+            has_left_arrow, _ = detect_arrow_in_roi(h_left_roi, 'left', h_left_x1, h_left_y1, h_left_x2, h_left_y2)
             if has_left_arrow:
                 print(f"        Arrow detection found left arrow")
 
@@ -485,7 +613,10 @@ def find_lines_near_measurement(image, measurement, save_roi_debug=False, image_
         if DEBUG_MODE:
             print(f"      ACTUAL Right H-ROI coords: x=[{h_right_x1}, {h_right_x2}], y=[{h_right_y1}, {h_right_y2}]")
 
-        right_h_lines = detect_lines_in_roi(h_right_roi, h_right_x1, h_right_y1, h_right_M_inv)
+        right_h_lines = detect_lines_in_roi(h_right_roi, h_right_x1, h_right_y1, h_right_M_inv,
+                                            all_measurements=all_measurements, exclude_items=exclude_items,
+                                            measurement=measurement, roi_x1=h_right_x1, roi_y1=h_right_y1,
+                                            roi_x2=h_right_x2, roi_y2=h_right_y2)
         print(f"      Right H-ROI: shape={h_right_roi.shape}, found {len(right_h_lines)} lines")
 
         # Save debug image of right H-ROI with detected lines
@@ -500,7 +631,7 @@ def find_lines_near_measurement(image, measurement, save_roi_debug=False, image_
 
         # If no lines found, try arrow detection
         if not right_h_lines:
-            has_right_arrow, _ = detect_arrow_in_roi(h_right_roi, 'right')  # Ignore wrong-direction for now
+            has_right_arrow, _ = detect_arrow_in_roi(h_right_roi, 'right', h_right_x1, h_right_y1, h_right_x2, h_right_y2)
             if has_right_arrow:
                 print(f"        Arrow detection found right arrow")
 
@@ -582,8 +713,11 @@ def find_lines_near_measurement(image, measurement, save_roi_debug=False, image_
             # Normal rectangular extraction
             v_top_roi = image[v_top_y1:v_top_y2, v_top_x1:v_top_x2]
 
-        top_v_lines = detect_lines_in_roi(v_top_roi, v_top_x1, v_top_y1, v_top_M_inv)
-        has_up_arrow, has_wrong_down_arrow = detect_arrow_in_roi(v_top_roi, 'up')
+        top_v_lines = detect_lines_in_roi(v_top_roi, v_top_x1, v_top_y1, v_top_M_inv,
+                                          all_measurements=all_measurements, exclude_items=exclude_items,
+                                          measurement=measurement, roi_x1=v_top_x1, roi_y1=v_top_y1,
+                                          roi_x2=v_top_x2, roi_y2=v_top_y2)
+        has_up_arrow, has_wrong_down_arrow = detect_arrow_in_roi(v_top_roi, 'up', v_top_x1, v_top_y1, v_top_x2, v_top_y2)
 
         # If wrong-direction arrow detected, ignore v-lines (they're part of that arrow)
         if has_wrong_down_arrow:
@@ -616,8 +750,11 @@ def find_lines_near_measurement(image, measurement, save_roi_debug=False, image_
             # Normal rectangular extraction
             v_bottom_roi = image[v_bottom_y1:v_bottom_y2, v_bottom_x1:v_bottom_x2]
 
-        bottom_v_lines = detect_lines_in_roi(v_bottom_roi, v_bottom_x1, v_bottom_y1, v_bottom_M_inv)
-        has_down_arrow, has_wrong_up_arrow = detect_arrow_in_roi(v_bottom_roi, 'down')
+        bottom_v_lines = detect_lines_in_roi(v_bottom_roi, v_bottom_x1, v_bottom_y1, v_bottom_M_inv,
+                                             all_measurements=all_measurements, exclude_items=exclude_items,
+                                             measurement=measurement, roi_x1=v_bottom_x1, roi_y1=v_bottom_y1,
+                                             roi_x2=v_bottom_x2, roi_y2=v_bottom_y2)
+        has_down_arrow, has_wrong_up_arrow = detect_arrow_in_roi(v_bottom_roi, 'down', v_bottom_x1, v_bottom_y1, v_bottom_x2, v_bottom_y2)
 
         # If wrong-direction arrow detected, ignore v-lines (they're part of that arrow)
         if has_wrong_up_arrow:
@@ -763,8 +900,11 @@ def find_lines_near_measurement(image, measurement, save_roi_debug=False, image_
 
         if v_bottom_x2 > v_bottom_x1 and v_bottom_y2_extended > v_bottom_y1_extended:
             v_bottom_roi_extended = image[v_bottom_y1_extended:v_bottom_y2_extended, v_bottom_x1:v_bottom_x2]
-            bottom_v_lines_retry = detect_lines_in_roi(v_bottom_roi_extended, v_bottom_x1, v_bottom_y1_extended)
-            has_down_arrow_retry, has_wrong_up_arrow_retry = detect_arrow_in_roi(v_bottom_roi_extended, 'down')
+            bottom_v_lines_retry = detect_lines_in_roi(v_bottom_roi_extended, v_bottom_x1, v_bottom_y1_extended, None,
+                                                       all_measurements=all_measurements, exclude_items=exclude_items,
+                                                       measurement=measurement, roi_x1=v_bottom_x1, roi_y1=v_bottom_y1_extended,
+                                                       roi_x2=v_bottom_x2, roi_y2=v_bottom_y2_extended)
+            has_down_arrow_retry, has_wrong_up_arrow_retry = detect_arrow_in_roi(v_bottom_roi_extended, 'down', v_bottom_x1, v_bottom_y1_extended, v_bottom_x2, v_bottom_y2_extended)
 
             if has_wrong_up_arrow_retry:
                 bottom_v_lines_retry = []
@@ -808,8 +948,11 @@ def find_lines_near_measurement(image, measurement, save_roi_debug=False, image_
 
         if v_top_x2 > v_top_x1 and v_top_y2_extended > v_top_y1_extended:
             v_top_roi_extended = image[v_top_y1_extended:v_top_y2_extended, v_top_x1:v_top_x2]
-            top_v_lines_retry = detect_lines_in_roi(v_top_roi_extended, v_top_x1, v_top_y1_extended)
-            has_up_arrow_retry, has_wrong_down_arrow_retry = detect_arrow_in_roi(v_top_roi_extended, 'up')
+            top_v_lines_retry = detect_lines_in_roi(v_top_roi_extended, v_top_x1, v_top_y1_extended, None,
+                                                    all_measurements=all_measurements, exclude_items=exclude_items,
+                                                    measurement=measurement, roi_x1=v_top_x1, roi_y1=v_top_y1_extended,
+                                                    roi_x2=v_top_x2, roi_y2=v_top_y2_extended)
+            has_up_arrow_retry, has_wrong_down_arrow_retry = detect_arrow_in_roi(v_top_roi_extended, 'up', v_top_x1, v_top_y1_extended, v_top_x2, v_top_y2_extended)
 
             if has_wrong_down_arrow_retry:
                 top_v_lines_retry = []
@@ -1740,13 +1883,16 @@ def extend_roi_and_get_full_extent(image, measurement, category, image_path=None
     return None
 
 
-def classify_measurements_by_lines(image, measurements, image_path=None):
+def classify_measurements_by_lines(image, measurements, image_path=None, exclude_items=None, all_measurements=None):
     """
     Classify measurements as WIDTH, HEIGHT, or UNCLASSIFIED based on nearby dimension lines
 
     Args:
         image: Source image
         measurements: List of measurement dicts
+        image_path: Path to image for debug output
+        exclude_items: List of items to exclude from arrow detection (OL text, room names)
+        all_measurements: List of all measurements for text exclusion
         image_path: Path to image file (for debug image saving)
 
     Returns:
@@ -1770,7 +1916,7 @@ def classify_measurements_by_lines(image, measurements, image_path=None):
         print(f"\n  Analyzing measurement {i+1}: '{meas['text']}' at ({meas['position'][0]:.0f}, {meas['position'][1]:.0f})")
 
         # Find lines near this measurement
-        line_info = find_lines_near_measurement(image, meas, save_roi_debug=True, image_path=image_path)
+        line_info = find_lines_near_measurement(image, meas, save_roi_debug=True, image_path=image_path, exclude_items=exclude_items, all_measurements=all_measurements)
 
         # Check if it's actually classified or unclassified
         if line_info and not line_info.get('unclassified'):

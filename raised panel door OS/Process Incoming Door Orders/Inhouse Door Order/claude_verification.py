@@ -26,7 +26,11 @@ def is_suspicious_measurement(text, raw_ocr=None):
     if raw_ocr:
         # Pattern 0: Leading dash or minus in RAW OCR (e.g., "-9-" which gets cleaned to "9")
         if raw_ocr.startswith('-') or raw_ocr.startswith('−'):
-            return True, "leading_dash_in_raw_ocr"
+            # Only mark suspicious if cleaned text doesn't look like a valid measurement
+            # If cleaning fixed it (e.g., "-45—" → "45"), trust the cleaned result
+            if not re.match(r'^\d+(\s+\d+/\d+)?$', text.strip()):
+                return True, "leading_dash_in_raw_ocr"
+            # Otherwise, cleaning fixed it - not suspicious
 
     # Pattern 1: Decimal point in a fraction (e.g., "6.5/8" should be "6 5/8")
     if re.search(r'\d+\.\d+/\d+', text):

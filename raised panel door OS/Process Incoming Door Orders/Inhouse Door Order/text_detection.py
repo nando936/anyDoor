@@ -11,7 +11,7 @@ import requests
 import re
 import os
 from measurement_config import (
-    ROOM_PATTERNS, EXCLUDE_PATTERNS, OVERLAY_PATTERN, QUANTITY_NOTATION_PATTERN, GROUPING_CONFIG
+    ROOM_PATTERNS, EXCLUDE_PATTERNS, OVERLAY_PATTERN, QUANTITY_NOTATION_PATTERN, X2_MULTIPLIER_PATTERN, GROUPING_CONFIG
 )
 from image_preprocessing import apply_hsv_preprocessing, find_opencv_supplemental_regions, find_digit_supplemental_regions
 
@@ -25,9 +25,10 @@ def find_room_and_overlay(annotations, zoom_factor=1.0):
     """
     room_name = ""
     overlay_info = ""
+    x2_multiplier = 1  # Default to 1 (no multiplier)
 
     if not annotations:
-        return room_name, overlay_info, []
+        return room_name, overlay_info, [], x2_multiplier
 
     # Get full text
     full_text = annotations[0].get('description', '') if annotations else ''
@@ -42,6 +43,23 @@ def find_room_and_overlay(annotations, zoom_factor=1.0):
             overlay_info = overlay_match.group(1).strip()
             print(f"Found overlay: {overlay_info}")
 
+        # Detect X2 multiplier notation
+        x2_match = re.search(X2_MULTIPLIER_PATTERN, full_text, re.IGNORECASE)
+        if x2_match:
+            x2_multiplier = 2
+            print(f"Found X2 notation - page multiplier: {x2_multiplier}")
+
+            # Exclude X2 text from measurements
+            for ann in annotations[1:]:
+                ann_text = ann['description'].upper()
+                if re.search(X2_MULTIPLIER_PATTERN, ann_text, re.IGNORECASE):
+                    vertices = ann['boundingPoly']['vertices']
+                    x = sum(v.get('x', 0) for v in vertices) / 4 / zoom_factor
+                    y = sum(v.get('y', 0) for v in vertices) / 4 / zoom_factor
+                    cleaned_exc_text = ann['description'].strip().strip('—−–-.,*').strip()
+                    exclude_items.append({'text': cleaned_exc_text, 'x': x, 'y': y})
+                    print(f"  Excluding X2 text: {ann['description']} at ({x}, {y})")
+
             # First, find "OL" text position
             ol_position = None
             for ann in annotations[1:]:
@@ -51,7 +69,8 @@ def find_room_and_overlay(annotations, zoom_factor=1.0):
                     ol_x = sum(v.get('x', 0) for v in vertices) / 4 / zoom_factor
                     ol_y = sum(v.get('y', 0) for v in vertices) / 4 / zoom_factor
                     ol_position = (ol_x, ol_y)
-                    exclude_items.append({'text': text, 'x': ol_x, 'y': ol_y})
+                    cleaned_exc_text = text.strip().strip('—−–-.,*').strip()
+                    exclude_items.append({'text': cleaned_exc_text, 'x': ol_x, 'y': ol_y})
                     break
 
             # Now find fractions that are close to "OL" position
@@ -68,7 +87,8 @@ def find_room_and_overlay(annotations, zoom_factor=1.0):
                         distance = ((x - ol_position[0])**2 + (y - ol_position[1])**2)**0.5
                         if distance < proximity_threshold:
                             # This fraction is close to OL, exclude it
-                            exclude_items.append({'text': text, 'x': x, 'y': y})
+                            cleaned_exc_text = text.strip().strip('—−–-.,*').strip()
+                            exclude_items.append({'text': cleaned_exc_text, 'x': x, 'y': y})
                             print(f"  Excluding overlay fraction '{text}' near OL (distance: {distance:.1f}px)")
 
         # Look for room names using configured patterns
@@ -100,7 +120,8 @@ def find_room_and_overlay(annotations, zoom_factor=1.0):
                         vertices = ann['boundingPoly']['vertices']
                         x = sum(v.get('x', 0) for v in vertices) / 4 / zoom_factor
                         y = sum(v.get('y', 0) for v in vertices) / 4 / zoom_factor
-                        exclude_items.append({'text': text, 'x': x, 'y': y})
+                        cleaned_exc_text = text.strip().strip('—−–-.,*').strip()
+                        exclude_items.append({'text': cleaned_exc_text, 'x': x, 'y': y})
                 break
 
         # Check for customer quantity notation (e.g., "1 or 2")
@@ -117,7 +138,8 @@ def find_room_and_overlay(annotations, zoom_factor=1.0):
                         vertices = ann['boundingPoly']['vertices']
                         x = sum(v.get('x', 0) for v in vertices) / 4 / zoom_factor
                         y = sum(v.get('y', 0) for v in vertices) / 4 / zoom_factor
-                        exclude_items.append({'text': ann['description'], 'x': x, 'y': y})
+                        cleaned_exc_text = ann['description'].strip().strip('—−–-.,*').strip()
+                        exclude_items.append({'text': cleaned_exc_text, 'x': x, 'y': y})
 
         # Also exclude common non-measurement text
         for ann in annotations[1:]:
@@ -129,9 +151,10 @@ def find_room_and_overlay(annotations, zoom_factor=1.0):
                 vertices = ann['boundingPoly']['vertices']
                 x = sum(v.get('x', 0) for v in vertices) / 4 / zoom_factor
                 y = sum(v.get('y', 0) for v in vertices) / 4 / zoom_factor
-                exclude_items.append({'text': ann['description'], 'x': x, 'y': y})
+                cleaned_exc_text = ann['description'].strip().strip('—−–-.,*').strip()
+                exclude_items.append({'text': cleaned_exc_text, 'x': x, 'y': y})
 
-    return room_name, overlay_info, exclude_items
+    return room_name, overlay_info, exclude_items, x2_multiplier
 
 
 def extract_measurements_from_text(text):
@@ -156,7 +179,7 @@ def find_interest_areas(image_path, api_key):
 
     if image is None:
         print(f"[ERROR] Could not load image from: {image_path}")
-        return [], "", "", []
+        return [], "", "", [], [], 1
 
     # Use HSV preprocessing
     use_hsv = True  # Changed back to True for better detection
@@ -175,8 +198,8 @@ def find_interest_areas(image_path, api_key):
         processed_image = image
         print("Using original image (no HSV preprocessing)")
 
-    # Apply 2x zoom for better Vision API detection
-    zoom_factor = 2.0
+    # Apply 2.5x zoom for better Vision API detection
+    zoom_factor = 2.5
     zoomed_image = cv2.resize(processed_image, None, fx=zoom_factor, fy=zoom_factor,
                               interpolation=cv2.INTER_CUBIC)
     print(f"Applied {zoom_factor}x zoom for Vision API detection")
@@ -200,18 +223,18 @@ def find_interest_areas(image_path, api_key):
 
     if response.status_code != 200:
         print(f"[ERROR] Vision API failed: {response.status_code}")
-        return [], "", ""
+        return [], "", "", [], [], 1
 
     result = response.json()
     if 'responses' not in result or not result['responses']:
-        return [], "", ""
+        return [], "", "", [], [], 1
 
     annotations = result['responses'][0].get('textAnnotations', [])
     if not annotations:
-        return [], "", ""
+        return [], "", "", [], [], 1
 
     # Extract room and overlay info first
-    room_name, overlay_info, exclude_items = find_room_and_overlay(annotations, zoom_factor)
+    room_name, overlay_info, exclude_items, x2_multiplier = find_room_and_overlay(annotations, zoom_factor)
 
     if room_name:
         print(f"Room name: {room_name}")
@@ -324,6 +347,11 @@ def find_interest_areas(image_path, api_key):
                     break
 
             if not should_exclude:
+                # Filter out isolated '1' - typically arrows or vertical lines, not measurements
+                if cleaned_text == '1':
+                    print(f"  Filtering isolated '1' at ({x:.0f}, {y:.0f}) - likely arrow or line artifact")
+                    continue
+
                 text_items.append({
                     'text': cleaned_text,  # Use cleaned text
                     'x': x,
@@ -481,7 +509,7 @@ def find_interest_areas(image_path, api_key):
             'texts': texts
         })
 
-    return interest_areas, room_name, overlay_info, opencv_regions  # Return opencv_regions too
+    return interest_areas, room_name, overlay_info, opencv_regions, exclude_items, x2_multiplier  # Return exclude_items and x2_multiplier
 
 
 def is_valid_measurement(texts):
