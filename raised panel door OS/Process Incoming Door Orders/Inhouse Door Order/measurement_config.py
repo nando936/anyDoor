@@ -56,7 +56,7 @@ ROOM_PATTERNS = [
 EXCLUDE_PATTERNS = ['H2', 'NH', 'C', 'UPPERS', 'BASE', 'OR']
 
 # Overlay notation pattern
-OVERLAY_PATTERN = r'(\d+/\d+\s+OL)'
+OVERLAY_PATTERN = r'(\d+/\d+\s+(?:OL|01|O1|0L))'
 
 # Customer quantity notation pattern (e.g., "1 or 2", "2 or 3")
 QUANTITY_NOTATION_PATTERN = r'\d+\s+or\s+\d+'

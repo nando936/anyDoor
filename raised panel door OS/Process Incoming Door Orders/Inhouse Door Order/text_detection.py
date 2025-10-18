@@ -64,7 +64,8 @@ def find_room_and_overlay(annotations, zoom_factor=1.0):
             ol_position = None
             for ann in annotations[1:]:
                 text = ann['description']
-                if 'OL' in text.upper():
+                # Check for OL or common OCR misreads (01, O1, 0L, 0l)
+                if 'OL' in text.upper() or ' 01' in text or ' O1' in text or ' 0L' in text.upper() or ' 0l' in text:
                     vertices = ann['boundingPoly']['vertices']
                     ol_x = sum(v.get('x', 0) for v in vertices) / 4 / zoom_factor
                     ol_y = sum(v.get('y', 0) for v in vertices) / 4 / zoom_factor

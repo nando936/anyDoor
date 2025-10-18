@@ -10,7 +10,7 @@ import base64
 import requests
 import re
 import os
-from measurement_config import ZOOM_CONFIG, HSV_CONFIG, VALIDATION_CONFIG, GROUPING_CONFIG
+from measurement_config import ZOOM_CONFIG, HSV_CONFIG, VALIDATION_CONFIG, GROUPING_CONFIG, OVERLAY_PATTERN
 from image_preprocessing import apply_hsv_preprocessing
 
 
@@ -723,6 +723,11 @@ def verify_measurement_at_center_with_logic(image_path, center, bounds, texts, a
                         abs(exc['y'] - original_y) < 50):
                         print(f"  Excluding: '{measurement_value}' matches exclude_items")
                         return None, "Excluded by exclude_items (matches room name, overlay, or label)"
+
+        # Also check if this measurement matches overlay pattern (e.g., "3/4 01", "3/4 OL")
+        if re.search(OVERLAY_PATTERN, measurement_value, re.IGNORECASE):
+            print(f"  Excluding: '{measurement_value}' matches overlay pattern")
+            return None, "Excluded by overlay pattern"
 
         # Calculate actual bounds from the components
         actual_bounds = None

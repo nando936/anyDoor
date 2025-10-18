@@ -602,7 +602,7 @@ def pair_measurements_by_proximity(classified_measurements, all_measurements, im
                         print(f"    Global offset reference line: ({offset_ref_x1:.1f}, {offset_ref_y1:.1f}) to ({offset_ref_x2:.1f}, {offset_ref_y2:.1f})")
 
                 # Distance threshold from the line
-                perpendicular_tolerance = 200
+                perpendicular_tolerance = 100
 
                 print(f"    Bottom width threshold: ±{perpendicular_tolerance}px from reference line")
 
