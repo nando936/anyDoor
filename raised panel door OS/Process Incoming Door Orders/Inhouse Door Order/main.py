@@ -252,6 +252,7 @@ def main(start_opening_number=1):
                     measurements_list.append({
                         'id': len(measurements_list) + 1,  # 1-based measurement number for debug files
                         'text': measurement_value,
+                        'raw_ocr': raw_ocr,  # Store raw OCR for suspicious pattern detection
                         'position': position,
                         'original_center': area['center'],  # Store Phase 1 center for debug image lookup
                         'bounds': bounds if bounds else area['bounds'],
@@ -316,7 +317,7 @@ def main(start_opening_number=1):
             # Collect suspicious measurements
             suspicious_measurements = []
             for i, meas in enumerate(measurements_list):
-                is_suspicious, reason = is_suspicious_measurement(meas['text'])
+                is_suspicious, reason = is_suspicious_measurement(meas['text'], meas.get('raw_ocr'))
                 if is_suspicious:
                     # Find the debug image for this measurement by matching position
                     # Debug images are saved as: DEBUG_page{N}_M{i}_pos{x}x{y}_{text}_zoom1x.png

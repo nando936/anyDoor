@@ -274,9 +274,9 @@ def find_down_arrows_near_heights(image, heights):
             # Look for down arrow: two lines forming V pointing down
             # Based on actual measurements:
             # Right leg: 20-88° (going down-right from apex, allows steeper arrows)
-            # Left leg: 285-360° (going down-left, allows very narrow V like 28 1/16)
-            down_right_lines = []  # Lines going down-right (20-80°)
-            down_left_lines = []   # Lines going down-left (285-360°)
+            # Left leg: 275-360° (going down-left, allows very narrow V and angled arrows)
+            down_right_lines = []  # Lines going down-right (20-88°)
+            down_left_lines = []   # Lines going down-left (275-360°)
 
             for line in lines:
                 x1, y1, x2, y2 = line[0]
@@ -289,12 +289,12 @@ def find_down_arrows_near_heights(image, heights):
                 # Check if line is right leg of V (20° to 88°)
                 if 20 <= angle <= 88:
                     down_right_lines.append((x1, y1, x2, y2, angle))
-                # Check if line is left leg of V (285° to 360°, allows very narrow V)
-                elif 285 <= angle <= 360:
+                # Check if line is left leg of V (275° to 360°, allows very narrow V)
+                elif 275 <= angle <= 360:
                     down_left_lines.append((x1, y1, x2, y2, angle))
 
             print(f"    Down-right lines (20-88°): {len(down_right_lines)}")
-            print(f"    Down-left lines (285-360°): {len(down_left_lines)}")
+            print(f"    Down-left lines (275-360°): {len(down_left_lines)}")
 
             # Check if we have at least one line in each direction
             # If both leg types exist, we have an arrow (even if fragmented)
@@ -313,6 +313,52 @@ def find_down_arrows_near_heights(image, heights):
             print(f"    Added down arrow at ({arrow_x}, {arrow_y})")
 
     return down_arrow_positions
+
+
+def is_height_above_width_with_angle(height_pos, width_pos, hline_angle_degrees):
+    """
+    Determine if height is "above" a width, accounting for the width's H-line angle.
+
+    "Above" means traveling in the perpendicular direction from the width's dimension line.
+    Uses perpendicular projection to determine if the height is on the "above" side.
+
+    Args:
+        height_pos: (x, y) tuple for height position
+        width_pos: (x, y) tuple for width position
+        hline_angle_degrees: Angle of width's H-line in degrees (-180 to 180)
+
+    Returns:
+        True if height is above the width's dimension line, False otherwise
+    """
+    import math
+
+    height_x, height_y = height_pos
+    width_x, width_y = width_pos
+
+    # Convert angle to radians
+    angle_rad = math.radians(hline_angle_degrees)
+
+    # Width dimension line direction vector
+    width_dir_x = math.cos(angle_rad)
+    width_dir_y = math.sin(angle_rad)
+
+    # Perpendicular direction (rotate 90° counterclockwise)
+    perp_x = -width_dir_y
+    perp_y = width_dir_x
+
+    # Ensure perpendicular points upward (toward smaller Y)
+    if perp_y > 0:  # Points downward (larger Y)
+        perp_x = -perp_x
+        perp_y = -perp_y
+
+    # Vector from width to height
+    to_height_x = height_x - width_x
+    to_height_y = height_y - width_y
+
+    # Dot product: if negative, height is in the perpendicular direction (above)
+    projection = to_height_x * perp_x + to_height_y * perp_y
+
+    return projection < 0  # Negative projection means "above"
 
 
 def pair_measurements_by_proximity(classified_measurements, all_measurements, image=None, image_path=None):
@@ -340,6 +386,9 @@ def pair_measurements_by_proximity(classified_measurements, all_measurements, im
                     'h_line_angle': meas.get('h_line_angle', 0),
                     'is_finished_size': meas.get('is_finished_size', False)
                 }
+                # Capture h_lines if available
+                if 'h_lines' in meas:
+                    width_data['h_lines'] = meas['h_lines']
                 # Capture width extent if available
                 if 'width_extent' in meas:
                     width_data['width_extent'] = meas['width_extent']
@@ -585,13 +634,24 @@ def pair_measurements_by_proximity(classified_measurements, all_measurements, im
 
     # For each width, find matching height(s)
     for width in widths:
-        if 'width_extent' not in width:
-            print(f"  Skipping {width['text']} - no extent available")
+        # Check if this is a bottom width
+        is_bottom_width = width.get('position_class') == 'bottom'
+
+        # Only skip BOTTOM widths without extent
+        # Non-bottom widths don't need extent for pairing
+        if is_bottom_width and 'width_extent' not in width:
+            print(f"  Skipping {width['text']} - no extent available (bottom width)")
             continue
 
-        extent = width['width_extent']
-        width_left = extent['left']
-        width_right = extent['right']
+        # Get extent info if available (bottom widths will have it, non-bottom might not)
+        extent = width.get('width_extent', None)
+        if extent:
+            width_left = extent['left']
+            width_right = extent['right']
+        else:
+            width_left = width['x']
+            width_right = width['x']
+
         drawer_config = width.get('drawer_config', '')
 
         # Check if this is a bottom width with multiple drawers
@@ -602,39 +662,40 @@ def pair_measurements_by_proximity(classified_measurements, all_measurements, im
         print(f"    Drawer config: {drawer_config}")
         print(f"    Is bottom width with multiple drawers: {is_bottom_multiple}")
 
-        # Calculate scan area X range (before the loop)
-        # Add padding ONLY to left side (where drawer heights are positioned)
-        x_padding_left = 120  # Padding on left side to capture drawer heights
-        scan_left = width_left - x_padding_left
-        scan_right = width_right  # No padding on right side
-        print(f"    Scan area X range: {scan_left:.0f} to {scan_right:.0f} (extent with {x_padding_left}px left padding)")
+        # Pairing logic based on width type
+        if is_bottom_width:
+            # BOTTOM WIDTH: Calculate scan area and find candidate heights using extent
+            # Add padding ONLY to left side (where drawer heights are positioned)
+            x_padding_left = 120  # Padding on left side to capture drawer heights
+            scan_left = width_left - x_padding_left
+            scan_right = width_right  # No padding on right side
+            print(f"    Scan area X range: {scan_left:.0f} to {scan_right:.0f} (extent with {x_padding_left}px left padding)")
 
-        # Find heights within the scan area X range (extent + horizontal padding)
-        candidate_heights = []
-        y_padding = 50  # Padding in pixels to account for skew
+            # Find heights within the scan area X range (extent + horizontal padding)
+            candidate_heights = []
+            y_padding = 50  # Padding in pixels to account for skew
 
-        # Get extent line Y coordinates (use max as baseline since Y increases downward)
-        extent_left_y = extent.get('left_y', width['y'])
-        extent_right_y = extent.get('right_y', width['y'])
-        extent_baseline_y = max(extent_left_y, extent_right_y)  # Lowest point of extent line
+            # Get extent line Y coordinates (use max as baseline since Y increases downward)
+            extent_left_y = extent.get('left_y', width['y'])
+            extent_right_y = extent.get('right_y', width['y'])
+            extent_baseline_y = max(extent_left_y, extent_right_y)  # Lowest point of extent line
 
-        for height in heights:
-            # Check if height CENTER is within scan area
-            # Use center position (X) regardless of bounds
-            height_x = height['x']
-            overlaps = scan_left <= height_x <= scan_right
+            for height in heights:
+                # Check if height CENTER is within scan area
+                # Use center position (X) regardless of bounds
+                height_x = height['x']
+                overlaps = scan_left <= height_x <= scan_right
 
-            if overlaps:
-                # Only consider heights above the EXTENT LINE (not width text position)
-                if height['y'] < extent_baseline_y + y_padding:
-                    candidate_heights.append(height)
-                    print(f"      Candidate height: {height['text']} at ({height['x']:.0f}, {height['y']:.0f})")
+                if overlaps:
+                    # Only consider heights above the EXTENT LINE (not width text position)
+                    if height['y'] < extent_baseline_y + y_padding:
+                        candidate_heights.append(height)
+                        print(f"      Candidate height: {height['text']} at ({height['x']:.0f}, {height['y']:.0f})")
 
-        print(f"    Found {len(candidate_heights)} candidate heights in X range")
+            print(f"    Found {len(candidate_heights)} candidate heights in X range")
 
-        # Apply pairing rules based on drawer configuration
-        if is_bottom_multiple:
-            if len(candidate_heights) >= 2:
+            # Apply pairing rules based on drawer configuration
+            if is_bottom_multiple and len(candidate_heights) >= 2:
                 print(f"    Multiple heights found ({len(candidate_heights)}) - this width belongs to the drawer bank, will pair with ALL")
             elif len(candidate_heights) < 2:
                 # Not enough heights in own extent - discard them and search left width's extent
@@ -671,9 +732,7 @@ def pair_measurements_by_proximity(classified_measurements, all_measurements, im
                     print(f"    SKIP: Still insufficient heights ({len(candidate_heights)}) after left search")
                     continue
 
-        # Pairing logic based on width type
-        if is_bottom_multiple:
-            # Bottom widths with multiple drawers - pair with ALL heights
+            # BOTTOM WIDTH PAIRING: Pair with ALL candidate heights
             if candidate_heights:
                 # Store the heights this width paired with
                 width_to_heights[id(width)] = candidate_heights[:]
@@ -686,6 +745,8 @@ def pair_measurements_by_proximity(classified_measurements, all_measurements, im
                         'width_pos': (width['x'], width['y']),
                         'height_pos': (height['x'], height['y']),
                         'distance': ((width['x'] - height['x'])**2 + (width['y'] - height['y'])**2)**0.5,
+                        'width_angle': extent.get('angle', 0),
+                        'width_hline_angle': extent.get('hline_angle', extent.get('angle', 0)),
                         'width_is_finished': width.get('is_finished_size', False),
                         'height_is_finished': height.get('is_finished_size', False)
                     }
@@ -701,32 +762,182 @@ def pair_measurements_by_proximity(classified_measurements, all_measurements, im
                     paired_heights.add(id(height))
                     print(f"    PAIRED: {width['text']} x {height['text']}")
         else:
-            # All other widths (top/unknown) - pair with closest height above and to the left, then right
+            # NON-BOTTOM WIDTHS: pair with closest height above using three-tier priority
+            # Priority: 1) center (directly above), 2) left, 3) right
             print(f"    Looking for single closest height above this width")
 
-            # Find heights above this width
-            heights_above = [h for h in heights if h['y'] < width['y']]
+            # Find heights above this width by projecting dimension line at h_line_angle
+            # Line from width: y = width_y + (x - width_x) * tan(h_line_angle)
+            # Height is above if height_y < line_y at height_x
+            import math
+            hline_angle = width.get('h_line_angle', 0)
+            print(f"    Using H-line angle: {hline_angle:.1f}°")
+
+            heights_above = []
+
+            # Split h-lines by ROI side (left vs right)
+            left_h_lines = []
+            right_h_lines = []
+            if 'h_lines' in width and width['h_lines']:
+                for line in width['h_lines']:
+                    if line.get('roi_side') == 'left':
+                        left_h_lines.append(line)
+                    elif line.get('roi_side') == 'right':
+                        right_h_lines.append(line)
+
+            # Find furthest-down h-line in each group
+            # Filter for nearly-horizontal lines first to exclude arrow lines
+            left_line = None
+            right_line = None
+            horizontal_threshold = 8.0  # degrees - same as classification
+            if left_h_lines:
+                nearly_horizontal_left = [l for l in left_h_lines if abs(l.get('angle', 0)) <= horizontal_threshold]
+                if nearly_horizontal_left:
+                    left_line = max(nearly_horizontal_left, key=lambda l: (l['coords'][1] + l['coords'][3]) / 2)
+                else:
+                    # Fallback: use closest to horizontal
+                    left_line = min(left_h_lines, key=lambda l: abs(l.get('angle', 0)))
+            if right_h_lines:
+                nearly_horizontal_right = [l for l in right_h_lines if abs(l.get('angle', 0)) <= horizontal_threshold]
+                if nearly_horizontal_right:
+                    right_line = max(nearly_horizontal_right, key=lambda l: (l['coords'][1] + l['coords'][3]) / 2)
+                else:
+                    # Fallback: use closest to horizontal
+                    right_line = min(right_h_lines, key=lambda l: abs(l.get('angle', 0)))
+
+            print(f"    Left H-ROI h-lines: {len(left_h_lines)}, Right H-ROI h-lines: {len(right_h_lines)}")
+            if left_line:
+                print(f"    Left extent line: ({left_line['coords'][0]:.0f}, {left_line['coords'][1]:.0f}) to ({left_line['coords'][2]:.0f}, {left_line['coords'][3]:.0f})")
+            if right_line:
+                print(f"    Right extent line: ({right_line['coords'][0]:.0f}, {right_line['coords'][1]:.0f}) to ({right_line['coords'][2]:.0f}, {right_line['coords'][3]:.0f})")
+
+            for h in heights:
+                # Determine which extent line to use based on height's X position relative to width center
+                if h['x'] < width['x']:
+                    # Left zone: use LEFT H-ROI's furthest-down h-line
+                    if left_line:
+                        x1, y1, x2, y2 = left_line['coords']
+                        # Use leftmost point of left line to project leftward
+                        if x1 <= x2:
+                            ref_x, ref_y = x1, y1
+                        else:
+                            ref_x, ref_y = x2, y2
+
+                        # Calculate angle from this line
+                        if x2 != x1:
+                            line_angle = math.degrees(math.atan((y2 - y1) / (x2 - x1)))
+                        else:
+                            line_angle = 90
+
+                        # Calculate Y on dimension line at this height's X position
+                        dx = h['x'] - ref_x
+                        dy = dx * math.tan(math.radians(line_angle))
+                        line_y_at_height_x = ref_y + dy
+                    else:
+                        # Fallback to center projection if no left h-line
+                        line_y_at_height_x = width['y'] + (h['x'] - width['x']) * math.tan(math.radians(hline_angle))
+                else:
+                    # Right zone: use RIGHT H-ROI's furthest-down h-line
+                    if right_line:
+                        x1, y1, x2, y2 = right_line['coords']
+                        # Use rightmost point of right line to project rightward
+                        if x1 >= x2:
+                            ref_x, ref_y = x1, y1
+                        else:
+                            ref_x, ref_y = x2, y2
+
+                        # Calculate angle from this line
+                        if x2 != x1:
+                            line_angle = math.degrees(math.atan((y2 - y1) / (x2 - x1)))
+                        else:
+                            line_angle = 90
+
+                        # Calculate Y on dimension line at this height's X position
+                        dx = h['x'] - ref_x
+                        dy = dx * math.tan(math.radians(line_angle))
+                        line_y_at_height_x = ref_y + dy
+                    else:
+                        # Fallback to center projection if no right h-line
+                        line_y_at_height_x = width['y'] + (h['x'] - width['x']) * math.tan(math.radians(hline_angle))
+
+                is_above = h['y'] < line_y_at_height_x
+                if is_above:
+                    heights_above.append(h)
+                    print(f"      Height {h['text']} at ({h['x']:.0f}, {h['y']:.0f}): line_y={line_y_at_height_x:.1f}, is_above={is_above}")
 
             if not heights_above:
                 print(f"    No heights found above this width - SKIP")
                 continue
 
-            # First: try to find height to the left (X < width X)
-            heights_left = [h for h in heights_above if h['x'] < width['x']]
-            heights_right = [h for h in heights_above if h['x'] >= width['x']]
+            # Calculate center zone using actual text bounds
+            # Use text left and right edges instead of center ± tolerance
+            width_bounds = width.get('bounds')
+            if width_bounds and 'left' in width_bounds and 'right' in width_bounds:
+                left_bound = width_bounds['left']
+                right_bound = width_bounds['right']
+                text_width = right_bound - left_bound
+            else:
+                # Fallback if bounds not available
+                left_bound = width['x'] - 25
+                right_bound = width['x'] + 25
+                text_width = 50
+
+            print(f"    Center zone using text bounds: [{left_bound:.0f}, {right_bound:.0f}] (text_width={text_width:.0f}px)")
+
+            # THREE-TIER PRIORITY:
+            # 1. Heights in center range (within text bounds) - NO height value limit
+            # 2. Heights to the left (if no center heights found) - ONLY heights <= 8 inches
+            # 3. Heights to the right (if no center or left heights found) - ONLY heights <= 8 inches
+
+            # Maximum height value (in inches) allowed for left/right pairing
+            # This prevents tall openings from pairing with far-left or far-right widths
+            MAX_HEIGHT_FOR_SIDE_PAIRING = 8.0  # inches
+
+            heights_center = [h for h in heights_above if left_bound <= h['x'] <= right_bound]
+
+            # Filter left/right heights by height value (must be <= 8 inches)
+            # First, separate by position (left/right)
+            heights_left_all = [h for h in heights_above if h['x'] < left_bound]
+            heights_right_all = [h for h in heights_above if h['x'] > right_bound]
+
+            # Import fraction_to_decimal for height value checking
+            from shared_utils import fraction_to_decimal
+
+            # Then filter by height value constraint
+            heights_left = [h for h in heights_left_all
+                           if fraction_to_decimal(h['text']) <= MAX_HEIGHT_FOR_SIDE_PAIRING]
+            heights_right = [h for h in heights_right_all
+                            if fraction_to_decimal(h['text']) <= MAX_HEIGHT_FOR_SIDE_PAIRING]
+
+            # Log filtered heights for debugging
+            if len(heights_left_all) != len(heights_left):
+                filtered_left = [h for h in heights_left_all if h not in heights_left]
+                for h in filtered_left:
+                    print(f"      Filtered out LEFT height {h['text']} ({fraction_to_decimal(h['text']):.2f}\") - exceeds {MAX_HEIGHT_FOR_SIDE_PAIRING}\" limit")
+            if len(heights_right_all) != len(heights_right):
+                filtered_right = [h for h in heights_right_all if h not in heights_right]
+                for h in filtered_right:
+                    print(f"      Filtered out RIGHT height {h['text']} ({fraction_to_decimal(h['text']):.2f}\") - exceeds {MAX_HEIGHT_FOR_SIDE_PAIRING}\" limit")
 
             closest_height = None
 
-            if heights_left:
-                # Find closest to the left (by distance)
+            if heights_center:
+                # Find closest in center range (by distance)
+                closest_height = min(heights_center, key=lambda h:
+                    ((width['x'] - h['x'])**2 + (width['y'] - h['y'])**2)**0.5)
+                print(f"    Found height in center range: {closest_height['text']} at ({closest_height['x']:.0f}, {closest_height['y']:.0f})")
+            elif heights_left:
+                # No heights in center, find closest to the left (by distance)
                 closest_height = min(heights_left, key=lambda h:
                     ((width['x'] - h['x'])**2 + (width['y'] - h['y'])**2)**0.5)
-                print(f"    Found height to the left: {closest_height['text']} at ({closest_height['x']:.0f}, {closest_height['y']:.0f})")
+                height_value = fraction_to_decimal(closest_height['text'])
+                print(f"    No heights in center, found height to the left: {closest_height['text']} ({height_value:.2f}\") at ({closest_height['x']:.0f}, {closest_height['y']:.0f})")
             elif heights_right:
-                # No heights to the left, find closest to the right
+                # No heights in center or left, find closest to the right (by distance)
                 closest_height = min(heights_right, key=lambda h:
                     ((width['x'] - h['x'])**2 + (width['y'] - h['y'])**2)**0.5)
-                print(f"    No heights to left, found height to the right: {closest_height['text']} at ({closest_height['x']:.0f}, {closest_height['y']:.0f})")
+                height_value = fraction_to_decimal(closest_height['text'])
+                print(f"    No heights in center or left, found height to the right: {closest_height['text']} ({height_value:.2f}\") at ({closest_height['x']:.0f}, {closest_height['y']:.0f})")
 
             if closest_height:
                 opening = {
@@ -735,6 +946,8 @@ def pair_measurements_by_proximity(classified_measurements, all_measurements, im
                     'width_pos': (width['x'], width['y']),
                     'height_pos': (closest_height['x'], closest_height['y']),
                     'distance': ((width['x'] - closest_height['x'])**2 + (width['y'] - closest_height['y'])**2)**0.5,
+                    'width_angle': extent.get('angle', 0) if extent else 0,
+                    'width_hline_angle': width.get('h_line_angle', 0),
                     'width_is_finished': width.get('is_finished_size', False),
                     'height_is_finished': closest_height.get('is_finished_size', False)
                 }
@@ -764,28 +977,46 @@ def pair_measurements_by_proximity(classified_measurements, all_measurements, im
         widths_above = [w for w in widths if w['y'] < height['y']]
 
         if not widths_above:
-            print(f"    No widths found above this height - SKIP")
-            continue
+            print(f"    No widths found above this height - trying search BELOW")
+            # Fallback: search for widths BELOW this height
+            widths_below = [w for w in widths if w['y'] > height['y']]
 
-        # Define tight X range (±50px from height center)
-        x_tolerance = 50
+            if not widths_below:
+                print(f"    No widths found below either - SKIP")
+                continue
 
-        # First: Look for width in tight center range
+            # Use widths_below for the 3-zone search
+            widths_above = widths_below
+            print(f"    Found {len(widths_below)} widths below, will search these")
+
+        # Use text bounds with 75px padding on each side
+        edge_padding = 75
+        height_bounds = height.get('bounds', {})
+        if height_bounds and 'left' in height_bounds and 'right' in height_bounds:
+            zone_left = height_bounds['left'] - edge_padding
+            zone_right = height_bounds['right'] + edge_padding
+            print(f"    Center zone using height text bounds: [{zone_left:.0f}, {zone_right:.0f}] with {edge_padding}px padding")
+        else:
+            # Fallback to center ± 100px if no bounds
+            zone_left = height['x'] - 100
+            zone_right = height['x'] + 100
+            print(f"    Center zone using fallback (no bounds): [{zone_left:.0f}, {zone_right:.0f}]")
+
+        # First: Look for width in center zone (based on height's text bounds)
         widths_center = [w for w in widths_above
-                        if abs(w['x'] - height['x']) <= x_tolerance]
+                        if zone_left <= w['x'] <= zone_right]
 
         # Second: Look for widths to the left
-        widths_left = [w for w in widths_above if w['x'] < height['x'] - x_tolerance]
+        widths_left = [w for w in widths_above if w['x'] < zone_left]
 
         # Third: Look for widths to the right
-        widths_right = [w for w in widths_above if w['x'] > height['x'] + x_tolerance]
+        widths_right = [w for w in widths_above if w['x'] > zone_right]
 
         closest_width = None
 
         if widths_center:
-            # Find closest in center range (by distance)
-            closest_width = min(widths_center, key=lambda w:
-                ((height['x'] - w['x'])**2 + (height['y'] - w['y'])**2)**0.5)
+            # Find closest in center range (by Y-distance only)
+            closest_width = min(widths_center, key=lambda w: abs(height['y'] - w['y']))
             print(f"    Found width in center range: {closest_width['text']} at ({closest_width['x']:.0f}, {closest_width['y']:.0f})")
         elif widths_left:
             # No widths in center, find closest to the left
@@ -799,12 +1030,21 @@ def pair_measurements_by_proximity(classified_measurements, all_measurements, im
             print(f"    No widths in center or left, found width to the right: {closest_width['text']} at ({closest_width['x']:.0f}, {closest_width['y']:.0f})")
 
         if closest_width:
+            # Get width angles from extent if available
+            width_angle = 0
+            width_hline_angle = 0
+            if 'width_extent' in closest_width:
+                width_angle = closest_width['width_extent'].get('angle', 0)
+                width_hline_angle = closest_width['width_extent'].get('hline_angle', width_angle)
+
             opening = {
                 'width': closest_width['text'],
                 'height': height['text'],
                 'width_pos': (closest_width['x'], closest_width['y']),
                 'height_pos': (height['x'], height['y']),
                 'distance': ((closest_width['x'] - height['x'])**2 + (closest_width['y'] - height['y'])**2)**0.5,
+                'width_angle': width_angle,
+                'width_hline_angle': width_hline_angle,
                 'width_is_finished': closest_width.get('is_finished_size', False),
                 'height_is_finished': height.get('is_finished_size', False)
             }

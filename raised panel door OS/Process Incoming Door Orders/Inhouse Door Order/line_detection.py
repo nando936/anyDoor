@@ -513,6 +513,12 @@ def find_lines_near_measurement(image, measurement, save_roi_debug=False, image_
         right_h_lines = []
         print(f"      Right H-ROI: Invalid bounds")
 
+    # Tag lines with their ROI source
+    for line in left_h_lines:
+        line['roi_side'] = 'left'
+    for line in right_h_lines:
+        line['roi_side'] = 'right'
+
     # Filter for horizontal lines (more tolerant angles)
     # When ROI is rotated, adjust the expected angle
     for line in left_h_lines + right_h_lines:
@@ -554,7 +560,8 @@ def find_lines_near_measurement(image, measurement, save_roi_debug=False, image_
                 'distance': abs(y - (ly1 + ly2) / 2),
                 'type': 'horizontal_line',
                 'angle': angle,
-                'adjusted_angle': adjusted_angle
+                'adjusted_angle': adjusted_angle,
+                'roi_side': line.get('roi_side', 'unknown')
             })
 
     if horizontal_lines:
@@ -866,17 +873,23 @@ def find_lines_near_measurement(image, measurement, save_roi_debug=False, image_
     except:
         pass
 
-    # For measurements under 8 inches, allow HEIGHT with just one arrow (up OR down)
-    is_small_measurement = measurement_value_inches is not None and measurement_value_inches < 8.0
+    # HEIGHT criteria: Either arrow-based OR v-line-based
+    #
+    # Arrow-based path (NEW): If ANY correct-direction arrow detected (up arrow in top OR down arrow in bottom)
+    # This works for any size measurement and allows partial indicators
+    arrow_based_height = (has_up_arrow or has_down_arrow)
 
+    # V-line-based path (ORIGINAL): For measurements >= 8", need indicators on both sides
+    is_small_measurement = measurement_value_inches is not None and measurement_value_inches < 8.0
     if is_small_measurement:
-        # Relaxed criteria for small measurements: just need ONE arrow (either up or down)
-        height_criteria_met = (has_up_arrow or has_down_arrow)
-        if height_criteria_met and DEBUG_MODE:
-            print(f"      Small measurement ({measurement_value_inches:.2f}\" < 8\") - relaxed HEIGHT criteria: need only one arrow")
+        # Small measurements already covered by arrow_based_height
+        vline_based_height = False
     else:
-        # Normal criteria: need indicators on BOTH top AND bottom
-        height_criteria_met = has_top_indicator and has_bottom_indicator
+        # Normal measurements: need indicators on BOTH top AND bottom
+        vline_based_height = has_top_indicator and has_bottom_indicator
+
+    # Qualify as HEIGHT if EITHER path succeeds
+    height_criteria_met = arrow_based_height or vline_based_height
 
     height_strength = len(top_v_lines) + (1 if has_up_arrow else 0) + len(bottom_v_lines) + (1 if has_down_arrow else 0)
 
@@ -945,11 +958,25 @@ def find_lines_near_measurement(image, measurement, save_roi_debug=False, image_
         measurement['h_lines'] = horizontal_lines
         measurement['v_lines'] = vertical_lines  # Store v-lines for visualization
 
-        # Use the line with the most angle (furthest from horizontal) - that's the dimension line
-        # Cabinet edges are nearly 0°, dimension lines have more angle
+        # Use the h-line furthest down (highest Y coordinate) - the bottom dimension line edge
+        # Filter for nearly-horizontal lines first to exclude arrow lines
         if horizontal_lines:
-            max_angle_line = max(horizontal_lines, key=lambda l: abs(l['angle']))
-            measurement['h_line_angle'] = max_angle_line['angle']
+            horizontal_threshold = 8.0  # degrees - exclude steep arrow lines
+            nearly_horizontal = [l for l in horizontal_lines
+                                if abs(l['angle']) <= horizontal_threshold]
+
+            if nearly_horizontal:
+                # Use the furthest-down nearly-horizontal line (true extent line)
+                furthest_down_line = max(nearly_horizontal,
+                                        key=lambda l: (l['coords'][1] + l['coords'][3]) / 2)
+                measurement['h_line_angle'] = furthest_down_line['angle']
+                print(f"    Selected h-line angle {furthest_down_line['angle']:.1f}° from {len(nearly_horizontal)} nearly-horizontal lines (threshold ±{horizontal_threshold}°)")
+            else:
+                # Fallback: no nearly-horizontal lines, use closest to horizontal
+                furthest_down_line = min(horizontal_lines,
+                                        key=lambda l: abs(l['angle']))
+                measurement['h_line_angle'] = furthest_down_line['angle']
+                print(f"    WARNING: No nearly-horizontal lines found, using closest to horizontal: {furthest_down_line['angle']:.1f}°")
 
             # Calculate width extent (leftmost and rightmost X from all h_lines)
             all_x_coords = []

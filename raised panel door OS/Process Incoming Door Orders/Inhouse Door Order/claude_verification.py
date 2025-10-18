@@ -9,14 +9,24 @@ import os
 import re
 
 
-def is_suspicious_measurement(text):
+def is_suspicious_measurement(text, raw_ocr=None):
     """
     Detect if a measurement looks suspicious and might need Claude verification.
+
+    Args:
+        text: Cleaned measurement text
+        raw_ocr: Raw OCR text before cleaning (optional)
 
     Returns: (is_suspicious, reason)
     """
     if not text:
         return False, None
+
+    # Check raw OCR for suspicious patterns (before cleaning removed them)
+    if raw_ocr:
+        # Pattern 0: Leading dash or minus in RAW OCR (e.g., "-9-" which gets cleaned to "9")
+        if raw_ocr.startswith('-') or raw_ocr.startswith('−'):
+            return True, "leading_dash_in_raw_ocr"
 
     # Pattern 1: Decimal point in a fraction (e.g., "6.5/8" should be "6 5/8")
     if re.search(r'\d+\.\d+/\d+', text):
@@ -130,25 +140,29 @@ def verify_measurements_with_claude(suspicious_measurements, image_dir):
     print(f"Found {len(suspicious_measurements)} suspicious measurements to verify")
 
     # Build prompt for Claude
-    prompt = """I need you to verify OCR readings from cabinet measurement images. The OCR has misread some measurements. I'll provide image file paths - please read each one and tell me the correct measurement.
+    prompt = """I need you to read measurements from cabinet measurement images. Please look at each image and tell me what measurement you see.
 
-Each image shows a measurement in green text. Measurements are in the format:
+CRITICAL INSTRUCTIONS:
+- If the image is BLANK or completely empty: respond with "BLANK"
+- If the text is too faint, blurry, or unreadable: respond with "UNREADABLE"
+- Only provide a measurement if you can clearly read it
+
+Each image should show a measurement in green text. Valid formats:
 - Whole number + fraction: "33 5/8" or "15 1/2"
 - Just fraction: "5/8" or "1/2"
 - Just whole number: "44"
 
-Respond with a numbered list in this EXACT format (just the measurement, nothing else):
-1. [measurement]
-2. [measurement]
-3. [measurement]
+Respond with a numbered list in this EXACT format:
+1. [measurement or BLANK or UNREADABLE]
+2. [measurement or BLANK or UNREADABLE]
+3. [measurement or BLANK or UNREADABLE]
 
-Here are the images to verify:
+Here are the images to read:
 
 """
 
     for i, meas in enumerate(suspicious_measurements, 1):
-        prompt += f"{i}. {meas['debug_image']}\n"
-        prompt += f"   OCR read: {meas['text']} (suspicious: {meas['reason']})\n\n"
+        prompt += f"{i}. {meas['debug_image']}\n\n"
 
     # Call Claude via CLI
     import platform
