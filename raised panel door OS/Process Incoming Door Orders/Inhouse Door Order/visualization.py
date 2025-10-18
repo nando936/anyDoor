@@ -574,8 +574,8 @@ def create_visualization(
             # Draw extent lines ONLY for bottom width measurements
             # Controlled by SHOW_BOTTOM_WIDTH_GROUP toggle
             # Show search zones even if extent calculation failed (for debugging)
-            # TEMP: Removed position_class check to debug extent line mismatch
-            if SHOW_BOTTOM_WIDTH_GROUP and category == 'width' and 'width_extent' in meas:
+            # Only draw on actual bottom widths (position_class == 'bottom')
+            if SHOW_BOTTOM_WIDTH_GROUP and category == 'width' and 'width_extent' in meas and meas.get('position_class') == 'bottom':
                 extent = meas['width_extent']
                 extent_failed = extent.get('failed', False)
                 print(f"[VIZ] M{i+1} has width_extent, failed={extent_failed}, debug_rois present: {'debug_rois' in extent}, has_drawer_config={'drawer_config' in meas}")
@@ -1774,8 +1774,8 @@ def create_visualization(
     combined = vis_image
 
     # Draw circles around ALL detected down arrows
-    # Controlled by SHOW_BOTTOM_WIDTH_GROUP toggle
-    if SHOW_BOTTOM_WIDTH_GROUP and down_arrow_positions and len(down_arrow_positions) > 0:
+    # Always shown when down arrows are detected
+    if down_arrow_positions and len(down_arrow_positions) > 0:
         # down_arrow_positions is list of (x, y) tuples
         lowest_arrow = max(down_arrow_positions, key=lambda pos: pos[1])  # Max Y = lowest on page
 

@@ -189,12 +189,12 @@ def find_clear_position_for_marker(intersection_x, intersection_y, width_pos, he
 
 def find_down_arrows_near_heights(image, heights):
     """
-    Find down arrows below each height measurement.
+    Find down arrows below each height measurement (includes HEIGHT and UNCLASSIFIED).
     Returns a list of Y-coordinates where down arrows are found.
 
     Args:
         image: The source image
-        heights: List of height measurement dicts with 'x', 'y', and optionally 'height_extent'
+        heights: List of height measurement dicts (HEIGHT + UNCLASSIFIED) with 'x', 'y', and optionally 'height_extent'
     """
     import cv2
     import numpy as np
@@ -204,17 +204,22 @@ def find_down_arrows_near_heights(image, heights):
 
     down_arrow_positions = []
 
-    print(f"\n  [DOWN ARROW SCAN] Total heights: {len(heights)}")
+    print(f"\n  [DOWN ARROW SCAN] Scanning {len(heights)} measurements (HEIGHT + UNCLASSIFIED)")
 
-    # For each height measurement, look for a down arrow below it
+    # For each height measurement (includes UNCLASSIFIED), look for a down arrow below it
     for height in heights:
         print(f"  [DOWN ARROW SCAN] Checking height '{height['text']}' at ({height['x']:.0f}, {height['y']:.0f})")
         height_x = height['x']
         height_y = height['y']
 
         # Define search region below the height measurement
-        # Start from the measurement text position, not the extent bottom
-        search_y_start = int(height_y + 50)
+        # Start search below text bottom with gap to avoid detecting text strokes as arrows
+        if 'bounds' in height and height['bounds']:
+            text_bottom = height['bounds']['bottom']
+            search_y_start = int(text_bottom + 50)  # 50px gap below text
+        else:
+            # Fallback if bounds not available - estimate bottom from center
+            search_y_start = int(height_y + 50)  # Assume ~50px from center to bottom + gap
 
         # Search area: 100px wide centered on height X, from search_y_start down 200px
         roi_x1 = max(0, int(height_x - 50))
@@ -272,11 +277,11 @@ def find_down_arrows_near_heights(image, heights):
             print(f"    All line angles: {[f'{a:.1f}' for a in sorted(all_angles)]}")
 
             # Look for down arrow: two lines forming V pointing down
-            # Based on actual measurements:
-            # Right leg: 20-88° (going down-right from apex, allows steeper arrows)
-            # Left leg: 275-360° (going down-left, allows very narrow V and angled arrows)
+            # Based on proven code from line_detection.py:
+            # Right leg: 20-88° (going down-right from apex)
+            # Left leg: 285-360° (going down-left from apex)
             down_right_lines = []  # Lines going down-right (20-88°)
-            down_left_lines = []   # Lines going down-left (275-360°)
+            down_left_lines = []   # Lines going down-left (285-360°)
 
             for line in lines:
                 x1, y1, x2, y2 = line[0]
@@ -289,12 +294,12 @@ def find_down_arrows_near_heights(image, heights):
                 # Check if line is right leg of V (20° to 88°)
                 if 20 <= angle <= 88:
                     down_right_lines.append((x1, y1, x2, y2, angle))
-                # Check if line is left leg of V (275° to 360°, allows very narrow V)
-                elif 275 <= angle <= 360:
+                # Check if line is left leg of V (285° to 360°)
+                elif 285 <= angle <= 360:
                     down_left_lines.append((x1, y1, x2, y2, angle))
 
             print(f"    Down-right lines (20-88°): {len(down_right_lines)}")
-            print(f"    Down-left lines (275-360°): {len(down_left_lines)}")
+            print(f"    Down-left lines (285-360°): {len(down_left_lines)}")
 
             # Check if we have at least one line in each direction
             # If both leg types exist, we have an arrow (even if fragmented)
@@ -305,12 +310,29 @@ def find_down_arrows_near_heights(image, heights):
         print(f"    Down arrow detected: {has_down_arrow}")
 
         if has_down_arrow:
-            # Found a down arrow - record the Y position (near top of search area, where arrow actually is)
-            # Arrow is typically 50px below the height text, not at center of 200px ROI
-            arrow_y = int(roi_y1 + 50)  # 50px from top of ROI (closer to actual arrow position)
-            arrow_x = int(height_x)
+            # Found a down arrow - calculate apex position from detected lines
+            # Apex is at the topmost point where the two legs meet
+            all_y_coords = []
+            all_x_coords = []
+
+            # Collect Y coordinates from all detected arrow lines
+            for x1, y1, x2, y2, angle in down_right_lines:
+                all_y_coords.extend([y1, y2])
+                all_x_coords.extend([x1, x2])
+            for x1, y1, x2, y2, angle in down_left_lines:
+                all_y_coords.extend([y1, y2])
+                all_x_coords.extend([x1, x2])
+
+            # Arrow apex is at the minimum Y (topmost point) in ROI coordinates
+            apex_y_roi = min(all_y_coords)
+            apex_x_roi = sum(all_x_coords) / len(all_x_coords)  # Average X position
+
+            # Convert from ROI coordinates to image coordinates
+            arrow_y = int(roi_y1 + apex_y_roi)
+            arrow_x = int(roi_x1 + apex_x_roi)
+
             down_arrow_positions.append((arrow_x, arrow_y))
-            print(f"    Added down arrow at ({arrow_x}, {arrow_y})")
+            print(f"    Added down arrow at ({arrow_x}, {arrow_y}) [apex from detected lines]")
 
     return down_arrow_positions
 
@@ -393,7 +415,7 @@ def pair_measurements_by_proximity(classified_measurements, all_measurements, im
                 if 'width_extent' in meas:
                     width_data['width_extent'] = meas['width_extent']
                 widths.append(width_data)
-            elif category == 'height':
+            elif category in ['height', 'unclassified']:
                 height_data = {
                     'text': meas['text'],
                     'x': meas['position'][0],

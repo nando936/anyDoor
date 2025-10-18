@@ -28,7 +28,7 @@ Usage:
 #   - Cyan scan ROIs (drawer detection area above extent line)
 #   - Down arrow circles and labels (A1, A2, A3, etc.)
 #   - Green bottom width reference line connecting arrows
-SHOW_BOTTOM_WIDTH_GROUP = False  # Set to True to show all bottom width visualizations
+SHOW_BOTTOM_WIDTH_GROUP = True  # Set to True to show all bottom width visualizations
 
 # NON-BOTTOM WIDTH EXTENT LINES: Show projected h-line extents for regular widths
 #   - Shows the horizontal extent line used during pairing algorithm
