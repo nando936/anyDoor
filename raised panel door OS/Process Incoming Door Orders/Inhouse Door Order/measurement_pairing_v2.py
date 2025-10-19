@@ -227,13 +227,13 @@ def find_down_arrows_near_heights(image, heights, all_measurements, exclude_item
         height_y = height['y']
 
         # Define search region below the height measurement
-        # Start search below text bottom with gap to avoid detecting text strokes as arrows
+        # Start search below text bottom with minimal gap (matches V-ROI gap from Phase 3)
         if 'bounds' in height and height['bounds']:
             text_bottom = height['bounds']['bottom']
-            search_y_start = int(text_bottom + 50)  # 50px gap below text
+            search_y_start = int(text_bottom + 5)  # 5px gap below text (matches V-ROI)
         else:
             # Fallback if bounds not available - estimate bottom from center
-            search_y_start = int(height_y + 50)  # Assume ~50px from center to bottom + gap
+            search_y_start = int(height_y + 5)  # Assume ~5px from center to bottom + gap
 
         # Search area: 100px wide centered on height X, from search_y_start down 200px
         roi_x1 = max(0, int(height_x - 50))
@@ -888,48 +888,106 @@ def pair_measurements_by_proximity(classified_measurements, all_measurements, im
                 if overlaps:
                     # Only consider heights above the EXTENT LINE (not width text position)
                     if height['y'] < extent_baseline_y + y_padding:
-                        candidate_heights.append(height)
-                        print(f"      Candidate height: {height['text']} at ({height['x']:.0f}, {height['y']:.0f})")
+                        # Check if there's another width between this bottom width and the height
+                        has_blocking_width = False
+                        for other_width in widths:
+                            # Skip current width
+                            if other_width.get('x') == width['x'] and other_width.get('y') == width['y']:
+                                continue
+
+                            other_x = other_width['x']
+                            other_y = other_width['y']
+
+                            # Check if other width is in X-range and between current width and height
+                            if scan_left <= other_x <= scan_right:
+                                print(f"        DEBUG: Checking width '{other_width['text']}' at ({other_x:.0f}, {other_y:.0f})")
+                                print(f"        DEBUG: height_y={height['y']:.0f}, other_y={other_y:.0f}, width_y={width['y']:.0f}")
+                                print(f"        DEBUG: {height['y']:.0f} < {other_y:.0f} < {width['y']:.0f} = {height['y'] < other_y < width['y']}")
+                                if height['y'] < other_y < width['y']:
+                                    has_blocking_width = True
+                                    print(f"        BLOCKED: Width '{other_width['text']}' at ({other_x:.0f}, {other_y:.0f}) blocks this height")
+                                    break
+
+                        if not has_blocking_width:
+                            candidate_heights.append(height)
+                            print(f"      Candidate height: {height['text']} at ({height['x']:.0f}, {height['y']:.0f})")
 
             print(f"    Found {len(candidate_heights)} candidate heights in X range")
 
             # Apply pairing rules based on drawer configuration
-            if is_bottom_multiple and len(candidate_heights) >= 2:
-                print(f"    Multiple heights found ({len(candidate_heights)}) - this width belongs to the drawer bank, will pair with ALL")
-            elif len(candidate_heights) < 2:
-                # Not enough heights in own extent - discard them and search left width's extent
-                print(f"    Insufficient heights ({len(candidate_heights)}) in own extent - discarding and searching left width's extent")
+            if is_bottom_multiple:
+                # Multiple drawers: MUST have 2+ heights
+                if len(candidate_heights) >= 2:
+                    print(f"    Multiple heights found ({len(candidate_heights)}) - this width belongs to the drawer bank, will pair with ALL")
+                else:
+                    # Not enough for multiple drawers - search left width's extent
+                    print(f"    Insufficient heights ({len(candidate_heights)}) for multiple drawers - searching left width's extent")
 
-                # Discard heights from own extent
-                candidate_heights = []
+                    # Discard heights from own extent
+                    candidate_heights = []
 
-                # Find the bottom width to the left of current width
-                left_width = None
-                for w in widths:
-                    # Must be a bottom width, to the left (lower X), and closest
-                    if (w.get('position_class') == 'bottom' and
-                        w['x'] < width['x'] and
-                        'width_extent' in w):
-                        if left_width is None or w['x'] > left_width['x']:
-                            left_width = w
+                    # Find the bottom width to the left of current width
+                    left_width = None
+                    for w in widths:
+                        # Must be a bottom width, to the left (lower X), and closest
+                        if (w.get('position_class') == 'bottom' and
+                            w['x'] < width['x'] and
+                            'width_extent' in w):
+                            if left_width is None or w['x'] > left_width['x']:
+                                left_width = w
 
-                if left_width:
-                    print(f"    Found left width: {left_width['text']} at ({left_width['x']:.0f}, {left_width['y']:.0f})")
+                    if left_width:
+                        print(f"    Found left width: {left_width['text']} at ({left_width['x']:.0f}, {left_width['y']:.0f})")
 
-                    # Use the same heights that the left width paired with
-                    left_width_id = id(left_width)
-                    if left_width_id in width_to_heights:
-                        candidate_heights = width_to_heights[left_width_id][:]  # Copy the list
-                        print(f"    Using {len(candidate_heights)} heights from left width's pairings:")
-                        for h in candidate_heights:
-                            print(f"      {h['text']} at ({h['x']:.0f}, {h['y']:.0f})")
-                    else:
-                        print(f"    Left width has not paired yet - cannot use its heights")
+                        # Use the same heights that the left width paired with
+                        left_width_id = id(left_width)
+                        if left_width_id in width_to_heights:
+                            candidate_heights = width_to_heights[left_width_id][:]  # Copy the list
+                            print(f"    Using {len(candidate_heights)} heights from left width's pairings:")
+                            for h in candidate_heights:
+                                print(f"      {h['text']} at ({h['x']:.0f}, {h['y']:.0f})")
+                        else:
+                            print(f"    Left width has not paired yet - cannot use its heights")
 
-                # Re-check if we have enough heights now
-                if len(candidate_heights) < 2:
-                    print(f"    SKIP: Still insufficient heights ({len(candidate_heights)}) after left search")
-                    continue
+                    # Re-check if we have enough heights for multiple drawers
+                    if len(candidate_heights) < 2:
+                        print(f"    SKIP: Still insufficient heights ({len(candidate_heights)}) for multiple drawers after left search")
+                        continue
+            else:
+                # 1 drawer: Allow pairing with 1+ height
+                if len(candidate_heights) >= 1:
+                    print(f"    Found {len(candidate_heights)} height(s) for 1 drawer configuration")
+                else:
+                    # No heights in own extent - try left search
+                    print(f"    No heights in own extent (1 drawer) - searching left width's extent")
+
+                    candidate_heights = []
+
+                    # Find the bottom width to the left of current width
+                    left_width = None
+                    for w in widths:
+                        if (w.get('position_class') == 'bottom' and
+                            w['x'] < width['x'] and
+                            'width_extent' in w):
+                            if left_width is None or w['x'] > left_width['x']:
+                                left_width = w
+
+                    if left_width:
+                        print(f"    Found left width: {left_width['text']} at ({left_width['x']:.0f}, {left_width['y']:.0f})")
+
+                        left_width_id = id(left_width)
+                        if left_width_id in width_to_heights:
+                            candidate_heights = width_to_heights[left_width_id][:]
+                            print(f"    Using {len(candidate_heights)} height(s) from left width's pairings:")
+                            for h in candidate_heights:
+                                print(f"      {h['text']} at ({h['x']:.0f}, {h['y']:.0f})")
+                        else:
+                            print(f"    Left width has not paired yet - cannot use its heights")
+
+                    # Re-check: For 1 drawer, need at least 1 height
+                    if len(candidate_heights) < 1:
+                        print(f"    SKIP: No heights found after left search")
+                        continue
 
             # BOTTOM WIDTH PAIRING: Pair with ALL candidate heights
             if candidate_heights:

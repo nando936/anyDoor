@@ -16,6 +16,29 @@ from measurement_config import (
 from image_preprocessing import apply_hsv_preprocessing, find_opencv_supplemental_regions, find_digit_supplemental_regions
 
 
+def _create_exclude_item(ann, zoom_factor, cleaned_text=None):
+    """Helper to create exclude_item with actual bounding box"""
+    vertices = ann['boundingPoly']['vertices']
+    x = sum(v.get('x', 0) for v in vertices) / 4 / zoom_factor
+    y = sum(v.get('y', 0) for v in vertices) / 4 / zoom_factor
+    x_coords = [v.get('x', 0) / zoom_factor for v in vertices]
+    y_coords = [v.get('y', 0) / zoom_factor for v in vertices]
+
+    text = cleaned_text if cleaned_text else ann['description'].strip().strip('—−–-.,*').strip()
+
+    return {
+        'text': text,
+        'x': x,
+        'y': y,
+        'bounds': {
+            'left': min(x_coords),
+            'right': max(x_coords),
+            'top': min(y_coords),
+            'bottom': max(y_coords)
+        }
+    }
+
+
 def find_room_and_overlay(annotations, zoom_factor=1.0):
     """Extract room name and overlay info from annotations
 
@@ -43,6 +66,26 @@ def find_room_and_overlay(annotations, zoom_factor=1.0):
             overlay_info = overlay_match.group(1).strip()
             print(f"Found overlay: {overlay_info}")
 
+        # Add overlay text parts directly to exclude_items (similar to room names)
+        if overlay_match:
+            overlay_parts = overlay_info.split()  # e.g., ["1/2", "OL"] or ["1/2", "O"]
+            for ann in annotations[1:]:
+                text = ann['description']
+                # Check if this annotation contains any overlay part
+                text_upper = text.upper()
+                should_exclude = False
+
+                for part in overlay_parts:
+                    if part.upper() in text_upper:
+                        should_exclude = True
+                        break
+
+                if should_exclude:
+                    cleaned_exc_text = text.strip().strip('—−–-.,*').strip()
+                    exclude_item = _create_exclude_item(ann, zoom_factor, cleaned_exc_text)
+                    exclude_items.append(exclude_item)
+                    print(f"  Excluding overlay part: '{text}' at ({exclude_item['x']:.1f}, {exclude_item['y']:.1f})")
+
         # Detect X2 multiplier notation
         x2_match = re.search(X2_MULTIPLIER_PATTERN, full_text, re.IGNORECASE)
         if x2_match:
@@ -53,12 +96,9 @@ def find_room_and_overlay(annotations, zoom_factor=1.0):
             for ann in annotations[1:]:
                 ann_text = ann['description'].upper()
                 if re.search(X2_MULTIPLIER_PATTERN, ann_text, re.IGNORECASE):
-                    vertices = ann['boundingPoly']['vertices']
-                    x = sum(v.get('x', 0) for v in vertices) / 4 / zoom_factor
-                    y = sum(v.get('y', 0) for v in vertices) / 4 / zoom_factor
-                    cleaned_exc_text = ann['description'].strip().strip('—−–-.,*').strip()
-                    exclude_items.append({'text': cleaned_exc_text, 'x': x, 'y': y})
-                    print(f"  Excluding X2 text: {ann['description']} at ({x}, {y})")
+                    exclude_item = _create_exclude_item(ann, zoom_factor)
+                    exclude_items.append(exclude_item)
+                    print(f"  Excluding X2 text: {ann['description']} at ({exclude_item['x']}, {exclude_item['y']})")
 
             # First, find "OL" text position
             ol_position = None
@@ -66,12 +106,10 @@ def find_room_and_overlay(annotations, zoom_factor=1.0):
                 text = ann['description']
                 # Check for OL or common OCR misreads (01, O1, 0L, 0l)
                 if 'OL' in text.upper() or ' 01' in text or ' O1' in text or ' 0L' in text.upper() or ' 0l' in text:
-                    vertices = ann['boundingPoly']['vertices']
-                    ol_x = sum(v.get('x', 0) for v in vertices) / 4 / zoom_factor
-                    ol_y = sum(v.get('y', 0) for v in vertices) / 4 / zoom_factor
-                    ol_position = (ol_x, ol_y)
                     cleaned_exc_text = text.strip().strip('—−–-.,*').strip()
-                    exclude_items.append({'text': cleaned_exc_text, 'x': ol_x, 'y': ol_y})
+                    exclude_item = _create_exclude_item(ann, zoom_factor, cleaned_exc_text)
+                    exclude_items.append(exclude_item)
+                    ol_position = (exclude_item['x'], exclude_item['y'])
                     break
 
             # Now find fractions that are close to "OL" position
@@ -89,7 +127,8 @@ def find_room_and_overlay(annotations, zoom_factor=1.0):
                         if distance < proximity_threshold:
                             # This fraction is close to OL, exclude it
                             cleaned_exc_text = text.strip().strip('—−–-.,*').strip()
-                            exclude_items.append({'text': cleaned_exc_text, 'x': x, 'y': y})
+                            exclude_item = _create_exclude_item(ann, zoom_factor, cleaned_exc_text)
+                            exclude_items.append(exclude_item)
                             print(f"  Excluding overlay fraction '{text}' near OL (distance: {distance:.1f}px)")
 
         # Look for room names using configured patterns
@@ -121,8 +160,21 @@ def find_room_and_overlay(annotations, zoom_factor=1.0):
                         vertices = ann['boundingPoly']['vertices']
                         x = sum(v.get('x', 0) for v in vertices) / 4 / zoom_factor
                         y = sum(v.get('y', 0) for v in vertices) / 4 / zoom_factor
+                        # Store actual bounding box for proper exclusion
+                        x_coords = [v.get('x', 0) / zoom_factor for v in vertices]
+                        y_coords = [v.get('y', 0) / zoom_factor for v in vertices]
                         cleaned_exc_text = text.strip().strip('—−–-.,*').strip()
-                        exclude_items.append({'text': cleaned_exc_text, 'x': x, 'y': y})
+                        exclude_items.append({
+                            'text': cleaned_exc_text,
+                            'x': x,
+                            'y': y,
+                            'bounds': {
+                                'left': min(x_coords),
+                                'right': max(x_coords),
+                                'top': min(y_coords),
+                                'bottom': max(y_coords)
+                            }
+                        })
                 break
 
         # Check for customer quantity notation (e.g., "1 or 2")
@@ -136,11 +188,8 @@ def find_room_and_overlay(annotations, zoom_factor=1.0):
             for part in parts:
                 for ann in annotations[1:]:
                     if ann['description'].lower() == part.lower():
-                        vertices = ann['boundingPoly']['vertices']
-                        x = sum(v.get('x', 0) for v in vertices) / 4 / zoom_factor
-                        y = sum(v.get('y', 0) for v in vertices) / 4 / zoom_factor
-                        cleaned_exc_text = ann['description'].strip().strip('—−–-.,*').strip()
-                        exclude_items.append({'text': cleaned_exc_text, 'x': x, 'y': y})
+                        exclude_item = _create_exclude_item(ann, zoom_factor)
+                        exclude_items.append(exclude_item)
 
         # Also exclude common non-measurement text
         for ann in annotations[1:]:
@@ -149,11 +198,8 @@ def find_room_and_overlay(annotations, zoom_factor=1.0):
             words = text.split()
             should_exclude = text in EXCLUDE_PATTERNS or any(word in EXCLUDE_PATTERNS for word in words)
             if should_exclude:
-                vertices = ann['boundingPoly']['vertices']
-                x = sum(v.get('x', 0) for v in vertices) / 4 / zoom_factor
-                y = sum(v.get('y', 0) for v in vertices) / 4 / zoom_factor
-                cleaned_exc_text = ann['description'].strip().strip('—−–-.,*').strip()
-                exclude_items.append({'text': cleaned_exc_text, 'x': x, 'y': y})
+                exclude_item = _create_exclude_item(ann, zoom_factor)
+                exclude_items.append(exclude_item)
 
     return room_name, overlay_info, exclude_items, x2_multiplier
 
@@ -252,8 +298,14 @@ def find_interest_areas(image_path, api_key):
         x_coords = [v.get('x', 0) / zoom_factor for v in vertices]
         y_coords = [v.get('y', 0) / zoom_factor for v in vertices]
 
+        # Filter out isolated '1' from all_vision_detections to prevent blocking digit detection
+        # Isolated '1' is typically an arrow or vertical line artifact
+        text = ann['description']
+        if text.strip() == '1':
+            continue  # Skip isolated '1' - don't create exclusion zone
+
         all_vision_detections.append({
-            'text': ann['description'],
+            'text': text,
             'x_min': min(x_coords),
             'x_max': max(x_coords),
             'y_min': min(y_coords),
@@ -420,7 +472,8 @@ def find_interest_areas(image_path, api_key):
     print("\nSupplemental digit detection...")
 
     # Find small digits that Vision API and OpenCV missed
-    digit_regions = find_digit_supplemental_regions(processed_image, all_vision_detections)
+    # Use original image for digit detection to preserve holes (HSV processing fills them in)
+    digit_regions = find_digit_supplemental_regions(image, all_vision_detections)
 
     if digit_regions:
         print(f"  Digit detection found {len(digit_regions)} additional '9' shapes")
