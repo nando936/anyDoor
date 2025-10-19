@@ -187,7 +187,7 @@ def find_clear_position_for_marker(intersection_x, intersection_y, width_pos, he
     return int(best_position[0]), int(best_position[1])
 
 
-def find_down_arrows_near_heights(image, heights, all_measurements, exclude_items=None):
+def find_down_arrows_near_heights(image, heights, all_measurements, exclude_items=None, image_path=None):
     """
     Find down arrows below each height measurement (includes HEIGHT and UNCLASSIFIED).
     Returns a list of Y-coordinates where down arrows are found.
@@ -197,6 +197,7 @@ def find_down_arrows_near_heights(image, heights, all_measurements, exclude_item
         heights: List of height measurement dicts (HEIGHT + UNCLASSIFIED) with 'x', 'y', and optionally 'height_extent'
         all_measurements: List of all measurements (used to exclude text areas from arrow search)
         exclude_items: List of non-measurement items (OL/room names) to exclude from arrow detection
+        image_path: Path to source image (for saving debug visualizations)
     """
     import cv2
     import numpy as np
@@ -205,6 +206,17 @@ def find_down_arrows_near_heights(image, heights, all_measurements, exclude_item
         return []
 
     down_arrow_positions = []
+
+    # Get image directory and base name for debug images
+    import os
+    if image_path:
+        image_dir = os.path.dirname(os.path.abspath(image_path))
+        base_name = os.path.splitext(os.path.basename(image_path))[0]
+        # Remove underscores and dashes from base name for consistency with other debug files
+        base_name_clean = base_name.replace('_', '').replace('-', '')
+    else:
+        image_dir = None
+        base_name_clean = None
 
     print(f"\n  [DOWN ARROW SCAN] Scanning {len(heights)} measurements (HEIGHT + UNCLASSIFIED)")
 
@@ -238,17 +250,12 @@ def find_down_arrows_near_heights(image, heights, all_measurements, exclude_item
             print(f"    ROI is empty, skipping")
             continue
 
-        # Use same arrow detection method as Phase 3
-        # Apply HSV filter to detect only green dimension arrows
-        from measurement_config import HSV_CONFIG
-        hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
-        lower_green = np.array(HSV_CONFIG['lower_green'])
-        upper_green = np.array(HSV_CONFIG['upper_green'])
-        green_mask = cv2.inRange(hsv, lower_green, upper_green)
+        # Use edge-based arrow detection (same as test_m5_arrow.py)
+        # Convert to grayscale
+        gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
 
-        # Apply morphological operations
-        kernel = np.ones((2,2), np.uint8)
-        green_mask = cv2.morphologyEx(green_mask, cv2.MORPH_CLOSE, kernel)
+        # Create mask for text exclusion
+        text_mask = np.ones_like(gray, dtype=np.uint8) * 255
 
         # Exclude other measurement text areas from search to avoid detecting arrows in text
         for other_meas in all_measurements:
@@ -275,7 +282,7 @@ def find_down_arrows_near_heights(image, heights, all_measurements, exclude_item
                 roi_ix2 = intersect_x2 - roi_x1
                 roi_iy2 = intersect_y2 - roi_y1
                 # Zero out this region in the mask
-                green_mask[roi_iy1:roi_iy2, roi_ix1:roi_ix2] = 0
+                text_mask[roi_iy1:roi_iy2, roi_ix1:roi_ix2] = 0
 
         # Also exclude OL text and room names from search
         if exclude_items:
@@ -302,24 +309,20 @@ def find_down_arrows_near_heights(image, heights, all_measurements, exclude_item
                     roi_ix2 = intersect_x2 - roi_x1
                     roi_iy2 = intersect_y2 - roi_y1
                     # Zero out this region in the mask
-                    green_mask[roi_iy1:roi_iy2, roi_ix1:roi_ix2] = 0
+                    text_mask[roi_iy1:roi_iy2, roi_ix1:roi_ix2] = 0
 
-        # Save debug images
-        import os
-        debug_dir = os.path.dirname(image.__class__.__name__)  # Get directory
-        # Actually, get image path from somewhere... for now just save to /tmp
-        cv2.imwrite(f"/tmp/arrow_search_roi_{int(height_x)}_{int(height_y)}.png", roi)
-        cv2.imwrite(f"/tmp/arrow_search_green_{int(height_x)}_{int(height_y)}.png", green_mask)
+        # Apply text exclusion mask
+        gray_masked = cv2.bitwise_and(gray, gray, mask=text_mask)
 
-        # Detect edges only on green-filtered image
-        edges = cv2.Canny(green_mask, 30, 100)
+        # Detect edges on grayscale (not green-filtered)
+        edges = cv2.Canny(gray_masked, 50, 150)
 
         # Find lines
         lines = cv2.HoughLinesP(edges, 1, np.pi/180, threshold=10, minLineLength=10, maxLineGap=5)
 
         has_down_arrow = False
         if lines is not None and len(lines) >= 2:
-            print(f"    Found {len(lines)} lines in green-filtered ROI")
+            print(f"    Found {len(lines)} lines in edge-detected ROI")
 
             # Print ALL angles first to debug
             all_angles = []
@@ -364,6 +367,74 @@ def find_down_arrows_near_heights(image, heights, all_measurements, exclude_item
                 print(f"      FOUND ARROW: {len(down_right_lines)} DR lines, {len(down_left_lines)} DL lines")
 
         print(f"    Down arrow detected: {has_down_arrow}")
+
+        # Create debug visualization showing the scan region and detected arrows
+        if image_dir and base_name_clean:
+            # Create visualization on copy of ROI
+            roi_viz = roi.copy()
+
+            # ALWAYS draw lines found (even if arrow detection failed)
+            # Color code: GREEN for down-right lines, BLUE for down-left lines
+            if 'down_right_lines' in locals() and 'down_left_lines' in locals():
+                # Draw down-right lines in GREEN
+                for x1, y1, x2, y2, angle in down_right_lines:
+                    cv2.line(roi_viz, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                # Draw down-left lines in BLUE
+                for x1, y1, x2, y2, angle in down_left_lines:
+                    cv2.line(roi_viz, (x1, y1), (x2, y2), (255, 0, 0), 2)
+
+                # If arrow was detected, circle the center
+                if has_down_arrow:
+                    # Calculate arrow center in ROI coordinates for visualization
+                    all_y_coords_viz = []
+                    all_x_coords_viz = []
+                    for x1, y1, x2, y2, angle in down_right_lines:
+                        all_y_coords_viz.extend([y1, y2])
+                        all_x_coords_viz.extend([x1, x2])
+                    for x1, y1, x2, y2, angle in down_left_lines:
+                        all_y_coords_viz.extend([y1, y2])
+                        all_x_coords_viz.extend([x1, x2])
+
+                    if all_y_coords_viz and all_x_coords_viz:
+                        center_y_viz = int(sum(all_y_coords_viz) / len(all_y_coords_viz))
+                        center_x_viz = int(sum(all_x_coords_viz) / len(all_x_coords_viz))
+                        # Circle the arrow center in YELLOW/CYAN
+                        cv2.circle(roi_viz, (center_x_viz, center_y_viz), 20, (0, 255, 255), 3)
+
+            # Draw scan region boundary
+            cv2.rectangle(roi_viz, (0, 0), (roi_viz.shape[1]-1, roi_viz.shape[0]-1), (255, 0, 0), 2)
+
+            # Add text indicating detection result
+            if has_down_arrow:
+                result_text = "ARROW FOUND"
+                result_color = (0, 255, 0)
+            else:
+                # Show line counts when arrow NOT detected
+                dr_count = len(down_right_lines) if 'down_right_lines' in locals() else 0
+                dl_count = len(down_left_lines) if 'down_left_lines' in locals() else 0
+                result_text = f"NO ARROW - DR:{dr_count} DL:{dl_count}"
+                result_color = (0, 0, 255)
+            cv2.putText(roi_viz, result_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX,
+                       0.7, result_color, 2)
+
+            # Save debug image with measurement info in filename
+            # Format: page-X_MX_[text]_down_arrow_scan.png
+            # Get measurement ID if available
+            meas_id = height.get('id', '')
+            if not meas_id:
+                # Try to find measurement ID from all_measurements
+                for i, meas in enumerate(all_measurements):
+                    if (abs(meas.get('position', (0, 0))[0] - height_x) < 5 and
+                        abs(meas.get('position', (0, 0))[1] - height_y) < 5 and
+                        meas.get('text') == height.get('text')):
+                        meas_id = meas.get('id', i+1)
+                        break
+
+            text_safe = height.get('text', '').replace('/', '-').replace(' ', '')[:20]
+            debug_filename = f"{base_name_clean}_M{meas_id}_{text_safe}_down_arrow_scan.png"
+            debug_path = os.path.join(image_dir, debug_filename)
+            cv2.imwrite(debug_path, roi_viz)
+            print(f"    [SAVED] Down arrow scan visualization: {debug_filename}")
 
         if has_down_arrow:
             # Found a down arrow - calculate visual center from detected lines
@@ -505,7 +576,7 @@ def pair_measurements_by_proximity(classified_measurements, all_measurements, im
         import numpy as np
 
         # Find down arrows below height measurements
-        down_arrow_y_positions = find_down_arrows_near_heights(image, heights, all_measurements, exclude_items)
+        down_arrow_y_positions = find_down_arrows_near_heights(image, heights, all_measurements, exclude_items, image_path)
 
         # Store bottom width reference line for visualization
         bottom_width_line = None
@@ -531,21 +602,69 @@ def pair_measurements_by_proximity(classified_measurements, all_measurements, im
             print(f"    Left side arrows: {len(left_arrows)}")
             print(f"    Right side arrows: {len(right_arrows)}")
 
+            Y_DELTA_THRESHOLD = 200  # Max Y difference between left and right arrows
+
+            # Initialize variables
+            leftmost_lowest_arrow = None
+            rightmost_lowest_arrow = None
+            arrows_rejected = False
+
+            # Case 1: Both left and right arrows exist
             if len(left_arrows) >= 1 and len(right_arrows) >= 1:
-                # Find lowest arrow on left side (maximum Y)
                 leftmost_lowest_arrow = max(left_arrows, key=lambda pos: pos[1])
-                # Find lowest arrow on right side (maximum Y)
                 rightmost_lowest_arrow = max(right_arrows, key=lambda pos: pos[1])
 
+                # Validate Y positions are similar
+                y_delta = abs(leftmost_lowest_arrow[1] - rightmost_lowest_arrow[1])
+
+                if y_delta > Y_DELTA_THRESHOLD:
+                    print(f"    WARNING: Y-delta between arrows ({y_delta}px) exceeds threshold ({Y_DELTA_THRESHOLD}px)")
+                    print(f"    Skipping bottom width classification - arrows not at same horizontal level")
+                    bottom_width_line = None
+                    arrows_rejected = True
+                else:
+                    print(f"    Y-delta between arrows: {y_delta}px (within {Y_DELTA_THRESHOLD}px threshold)")
+                    print(f"    Lowest arrow on LEFT side: ({leftmost_lowest_arrow[0]}, {leftmost_lowest_arrow[1]})")
+                    print(f"    Lowest arrow on RIGHT side: ({rightmost_lowest_arrow[0]}, {rightmost_lowest_arrow[1]})")
+
+            # Case 2: Only left arrows exist
+            elif len(left_arrows) >= 1 and len(right_arrows) == 0:
+                leftmost_lowest_arrow = max(left_arrows, key=lambda pos: pos[1])
+                y_pos = leftmost_lowest_arrow[1]
+                # Create horizontal line across full image width
+                rightmost_lowest_arrow = (image.shape[1], y_pos)
+                leftmost_lowest_arrow = (0, y_pos)
+                print(f"    Only LEFT arrows found - using horizontal line at Y={y_pos}")
                 print(f"    Lowest arrow on LEFT side: ({leftmost_lowest_arrow[0]}, {leftmost_lowest_arrow[1]})")
                 print(f"    Lowest arrow on RIGHT side: ({rightmost_lowest_arrow[0]}, {rightmost_lowest_arrow[1]})")
 
-                # Store line for visualization
+            # Case 3: Only right arrows exist
+            elif len(left_arrows) == 0 and len(right_arrows) >= 1:
+                rightmost_lowest_arrow = max(right_arrows, key=lambda pos: pos[1])
+                y_pos = rightmost_lowest_arrow[1]
+                # Create horizontal line across full image width
+                leftmost_lowest_arrow = (0, y_pos)
+                rightmost_lowest_arrow = (image.shape[1], y_pos)
+                print(f"    Only RIGHT arrows found - using horizontal line at Y={y_pos}")
+                print(f"    Lowest arrow on LEFT side: ({leftmost_lowest_arrow[0]}, {leftmost_lowest_arrow[1]})")
+                print(f"    Lowest arrow on RIGHT side: ({rightmost_lowest_arrow[0]}, {rightmost_lowest_arrow[1]})")
+
+            # Case 4: No arrows at all
+            else:
+                print(f"    No arrows found on either side")
+                bottom_width_line = None
+
+            # Store line for visualization and proceed with classification if we have valid arrows
+            if leftmost_lowest_arrow is not None and rightmost_lowest_arrow is not None and not arrows_rejected:
+                # This handles Cases 1 (valid y_delta), 2, and 3
+                # Set bottom_width_line so the rest of the code can proceed
                 bottom_width_line = {
                     'start': leftmost_lowest_arrow,
                     'end': rightmost_lowest_arrow
                 }
 
+            # Only proceed with bottom width classification if we have a valid line
+            if bottom_width_line is not None:
                 # Calculate GLOBAL smallest height value across ALL heights
                 # This will be used to create ONE shared offset reference line
                 from shared_utils import fraction_to_decimal
@@ -1043,7 +1162,8 @@ def pair_measurements_by_proximity(classified_measurements, all_measurements, im
             else:
                 print(f"    No suitable height found - SKIP")
 
-    # Pair any unpaired heights with widths above them
+    # Pair any unpaired heights with widths at least 10px above them
+    # This prevents side-by-side measurements from incorrectly pairing
     print(f"\n=== PAIRING UNPAIRED HEIGHTS WITH WIDTHS ABOVE ===")
     unpaired_heights = [h for h in heights if id(h) not in paired_heights]
 
@@ -1055,11 +1175,13 @@ def pair_measurements_by_proximity(classified_measurements, all_measurements, im
     for height in unpaired_heights:
         print(f"\n  Looking for width above unpaired height: {height['text']} at ({height['x']:.0f}, {height['y']:.0f})")
 
-        # Find all widths above this height (Y < height Y)
-        widths_above = [w for w in widths if w['y'] < height['y']]
+        # Find all widths above this height (at least 10px above to avoid side-by-side pairing)
+        # Width must be at least 10 pixels ABOVE the height (w_y < h_y - 10)
+        min_vertical_distance = 10  # pixels
+        widths_above = [w for w in widths if w['y'] < (height['y'] - min_vertical_distance)]
 
         if not widths_above:
-            print(f"    No widths found above this height - trying search BELOW")
+            print(f"    No widths found at least {min_vertical_distance}px above this height - trying search BELOW")
             # Fallback: search for widths BELOW this height
             widths_below = [w for w in widths if w['y'] > height['y']]
 
