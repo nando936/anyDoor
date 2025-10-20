@@ -9,9 +9,78 @@ import os
 import re
 
 
+def matches_valid_measurement_pattern(text):
+    """
+    Check if text matches the valid measurement pattern.
+
+    Valid patterns:
+    - Whole number: "30"
+    - Whole + fraction: "30 1/4"
+    - Whole + notation: "30 F", "30 O", "30 NH"
+    - Whole + fraction + notation: "30 1/4 F", "30 1/4 O", "30 1/4 NH"
+
+    Args:
+        text: Measurement text to validate
+
+    Returns: True if matches valid pattern, False otherwise
+    """
+    if not text:
+        return False
+
+    # Pattern: whole number, optional fraction, optional notation (F, O, NH)
+    # ^\d+(\s+\d+/\d+)?(\s+(F|O|NH))?$
+    pattern = r'^\d+(\s+\d+/\d+)?(\s+(F|O|NH))?$'
+    return re.match(pattern, text.strip()) is not None
+
+
+def is_partial_measurement(text, raw_ocr=None):
+    """
+    Detect if a measurement appears to be partially cropped/cut-off.
+
+    Indicators of partial measurements:
+    - Ends with "/" but no denominator (e.g., "6 1/")
+    - Space + single digit at end without slash (e.g., "6 1", "20 3")
+    - Raw OCR suggests incomplete fraction
+
+    Args:
+        text: Cleaned measurement text
+        raw_ocr: Raw OCR text before cleaning (optional)
+
+    Returns: (is_partial, recommended_expansion_pixels)
+    """
+    if not text:
+        return False, 0
+
+    # Pattern 1: Ends with "/" but no denominator (e.g., "6 1/")
+    if re.search(r'/\s*$', text):
+        return True, 150  # Expand to catch denominator + possible notation
+
+    # Check raw OCR as well
+    if raw_ocr and re.search(r'/\s*$', raw_ocr):
+        return True, 150
+
+    # Pattern 2: Space + single digit at end without slash (e.g., "6 1", "20 3")
+    # This looks like an incomplete fraction (missing "1/16" or similar)
+    if re.search(r'\d+\s+\d$', text):
+        return True, 150  # Expand to catch "/denominator" + possible notation
+
+    # Pattern 3: Very short text that doesn't match valid pattern
+    # (already caught by is_suspicious_measurement, but check here too)
+    if len(text.strip()) < 3 and not re.match(r'^\d+$', text):
+        return True, 100
+
+    return False, 0
+
+
 def is_suspicious_measurement(text, raw_ocr=None):
     """
     Detect if a measurement looks suspicious and might need Claude verification.
+
+    Uses two-stage validation:
+    1. Check raw OCR against valid pattern (if provided)
+    2. If raw fails, check cleaned text against valid pattern
+    3. If both fail, mark as suspicious
+    4. If cleaned text passes, run additional fraction validation checks
 
     Args:
         text: Cleaned measurement text
@@ -22,47 +91,43 @@ def is_suspicious_measurement(text, raw_ocr=None):
     if not text:
         return False, None
 
-    # Check raw OCR for suspicious patterns (before cleaning removed them)
+    # TWO-STAGE VALIDATION
+    # Stage 1: Check raw OCR against valid pattern (if provided)
+    raw_ocr_valid = False
     if raw_ocr:
+        raw_ocr_valid = matches_valid_measurement_pattern(raw_ocr)
+
+    # Stage 2: Check cleaned text against valid pattern
+    cleaned_text_valid = matches_valid_measurement_pattern(text)
+
+    # If cleaned text doesn't match valid pattern, it's suspicious
+    # (even if raw OCR was valid, cleaning may have broken it)
+    if not cleaned_text_valid:
+        return True, "invalid_measurement_format"
+
+    # If cleaned text is valid, continue with additional fraction validation checks below
+
+    # Check raw OCR for suspicious patterns (before cleaning removed them)
+    if raw_ocr and not raw_ocr_valid:
         # Pattern 0: Leading dash or minus in RAW OCR (e.g., "-9-" which gets cleaned to "9")
+        # If raw OCR had issues but cleaning fixed it (cleaned text passed validation),
+        # we still want to note it for logging purposes
         if raw_ocr.startswith('-') or raw_ocr.startswith('−'):
-            # Only mark suspicious if cleaned text doesn't look like a valid measurement
-            # If cleaning fixed it (e.g., "-45—" → "45"), trust the cleaned result
-            if not re.match(r'^\d+(\s+\d+/\d+)?$', text.strip()):
-                return True, "leading_dash_in_raw_ocr"
-            # Otherwise, cleaning fixed it - not suspicious
+            # Cleaned text already passed validation (line 62), so cleaning fixed it
+            # This is just for information - not marking as suspicious
+            pass
 
-    # Pattern 1: Decimal point in a fraction (e.g., "6.5/8" should be "6 5/8")
-    if re.search(r'\d+\.\d+/\d+', text):
-        return True, "decimal_in_fraction"
+    # Additional validation for measurements that passed the basic pattern check
+    # These checks catch logically invalid measurements (impossible fractions, too large, etc.)
 
-    # Pattern 2: Missing space before fraction (e.g., "65/8" should be "6 5/8")
-    # But allow valid fractions like "5/8" or "1/2" without a whole number
-    if re.search(r'\d{2,}/\d+', text):
-        # Check if numerator is larger than denominator (impossible)
-        match = re.search(r'(\d+)/(\d+)', text)
-        if match:
-            num, denom = int(match.group(1)), int(match.group(2))
-            if num >= denom:
-                return True, "invalid_fraction"
-        return True, "missing_space_before_fraction"
-
-    # Pattern 3: Impossible fraction (numerator >= denominator, except 1/1 which shouldn't appear)
+    # Pattern 1: Impossible fraction (numerator >= denominator, except 1/1 which shouldn't appear)
     # Check all fractions in the text
     for match in re.finditer(r'(\d+)/(\d+)', text):
         num, denom = int(match.group(1)), int(match.group(2))
         if num >= denom:
             return True, "impossible_fraction"
 
-    # Pattern 4: Strange multi-digit numbers before slash (e.g., "13.5/8" or "345/8")
-    if re.search(r'\d{3,}/\d+', text):
-        return True, "multi_digit_numerator"
-
-    # Pattern 5: Leading dash or minus (e.g., "-345/8")
-    if text.startswith('-') or text.startswith('−'):
-        return True, "leading_dash"
-
-    # Pattern 6: Measurement over 120 inches (likely OCR error - missing space/fraction)
+    # Pattern 2: Measurement over 120 inches (likely OCR error - missing space/fraction)
     # Extract numeric value from text
     try:
         # Try to parse as a simple number first
@@ -83,19 +148,7 @@ def is_suspicious_measurement(text, raw_ocr=None):
     except:
         pass
 
-    # Pattern 7: Letters in measurement (except valid notations F, O, NH)
-    # Valid notations: F (finished size), O (opening size), NH (no hinges)
-    if re.search(r'[A-Za-z]', text):
-        # Remove valid notations from check
-        text_cleaned = text.upper()
-        text_cleaned = re.sub(r'\bF\b', '', text_cleaned)  # Remove standalone F
-        text_cleaned = re.sub(r'\bO\b', '', text_cleaned)  # Remove standalone O
-        text_cleaned = re.sub(r'\bNH\b', '', text_cleaned)  # Remove NH
-        # Check if any letters remain after removing valid notations
-        if re.search(r'[A-Z]', text_cleaned):
-            return True, "invalid_letters_in_measurement"
-
-    # Pattern 8: Invalid fraction denominator (not in 1/16 increments)
+    # Pattern 3: Invalid fraction denominator (not in 1/16 increments)
     # Valid fractions: 1/2, 1/4, 3/4, 1/8, 3/8, 5/8, 7/8, and 1/16 through 15/16
     for match in re.finditer(r'(\d+)/(\d+)', text):
         num, denom = int(match.group(1)), int(match.group(2))
@@ -150,11 +203,22 @@ CRITICAL INSTRUCTIONS:
 - If the image is BLANK or completely empty: respond with "BLANK"
 - If the text is too faint, blurry, or unreadable: respond with "UNREADABLE"
 - Only provide a measurement if you can clearly read it
+- Look carefully for notation letters (F, O, NH) after the measurement
+- If you see any notation in the image, include it in your response
+
+NOTATION MEANINGS:
+- F = Finished size (the final size of the door)
+- O = Opening size (the size of the cabinet opening)
+- NH = No hinges (door has no hinge holes)
 
 Each image should show a measurement in green text. Valid formats:
+- Whole number: "44"
 - Whole number + fraction: "33 5/8" or "15 1/2"
-- Just fraction: "5/8" or "1/2"
-- Just whole number: "44"
+- Whole number + notation: "30 F" or "24 O" or "18 NH"
+- Whole number + fraction + notation: "30 1/4 F" or "18 1/2 O" or "24 3/4 NH"
+
+IMPORTANT: If you see a notation letter in the image, include it in your response.
+Example: if image shows "6 1/2 F", return "6 1/2 F" (not just "6 1/2")
 
 Respond with a numbered list in this EXACT format:
 1. [measurement or BLANK or UNREADABLE]
@@ -233,10 +297,10 @@ def apply_claude_corrections(measurements_list, corrections):
         corrections: Dict mapping index -> corrected_text
 
     Returns:
-        Tuple: (number of corrections applied, list of invalid indices)
+        Tuple: (number of corrections applied, list of invalid indices, list of corrected indices)
     """
     if not corrections:
-        return 0, []
+        return 0, [], []
 
     # Phrases that indicate Claude couldn't read the measurement
     invalid_phrases = [
@@ -256,6 +320,7 @@ def apply_claude_corrections(measurements_list, corrections):
 
     count = 0
     invalid_indices = []
+    corrected_indices = []  # Track which measurements were actually corrected
 
     for index, corrected_text in corrections.items():
         if index < len(measurements_list):
@@ -276,7 +341,16 @@ def apply_claude_corrections(measurements_list, corrections):
                 measurements_list[index]['text'] = corrected_text
                 measurements_list[index]['claude_corrected'] = True
                 measurements_list[index]['original_ocr'] = old_text
+
+                # Re-check for F notation after Claude correction
+                if corrected_text.endswith(' F'):
+                    measurements_list[index]['is_finished_size'] = True
+                    # Remove ' F' from display text to avoid duplication
+                    measurements_list[index]['text'] = corrected_text[:-2]
+                    print(f"  Re-detected F notation after Claude correction")
+
                 count += 1
+                corrected_indices.append(index)  # Track this correction
                 print(f"  Applied correction at index {index}: '{old_text}' → '{corrected_text}'")
 
-    return count, invalid_indices
+    return count, invalid_indices, corrected_indices

@@ -55,7 +55,7 @@ def add_fraction_to_measurement(measurement, fraction_to_add):
         return f"{whole} {remainder}/{result.denominator}"
 
 
-def find_clear_position_for_marker(intersection_x, intersection_y, width_pos, height_pos, measurements_list, opening, image, existing_markers=None, overlay_info=None, marker_radius=35):
+def find_clear_position_for_marker(intersection_x, intersection_y, width_pos, height_pos, measurements_list, opening, image, existing_markers=None, overlay_info=None, marker_radius=35, exclude_items=None):
     """
     Find the best available clear position for the opening number marker.
     Analyzes available space and picks the closest spot to the intersection that fits.
@@ -74,6 +74,18 @@ def find_clear_position_for_marker(intersection_x, intersection_y, width_pos, he
                 'bottom': bounds['bottom']
             })
 
+    # Add regions for room name text (exclude_items)
+    if exclude_items:
+        for item in exclude_items:
+            if 'bounds' in item and item['bounds']:
+                bounds = item['bounds']
+                occupied_regions.append({
+                    'left': bounds['left'],
+                    'right': bounds['right'],
+                    'top': bounds['top'],
+                    'bottom': bounds['bottom']
+                })
+
     # Add regions for existing opening markers
     if existing_markers:
         for marker in existing_markers:
@@ -87,16 +99,18 @@ def find_clear_position_for_marker(intersection_x, intersection_y, width_pos, he
                 'bottom': marker_y + existing_radius
             })
 
-            # Add dimension text below marker
-            dim_text = f"{marker['opening']['width']} W x {marker['opening']['height']} H"
-            font = cv2.FONT_HERSHEY_SIMPLEX
-            (text_width, text_height), _ = cv2.getTextSize(dim_text, font, 0.7, 2)
-            occupied_regions.append({
-                'left': marker_x - text_width//2 - 1,  # Minimal 1px padding
-                'right': marker_x + text_width//2 + 1,
-                'top': marker_y + 48,  # Text starts at +50, minimal padding
-                'bottom': marker_y + 50 + text_height
-            })
+            # NOTE: Dimension text below marker is NOT included in collision detection
+            # This allows markers to be placed closer together without being pushed away
+            # by the dimension text of other markers
+            # dim_text = f"{marker['opening']['width']} W x {marker['opening']['height']} H"
+            # font = cv2.FONT_HERSHEY_SIMPLEX
+            # (text_width, text_height), _ = cv2.getTextSize(dim_text, font, 0.7, 2)
+            # occupied_regions.append({
+            #     'left': marker_x - text_width//2 - 1,  # Minimal 1px padding
+            #     'right': marker_x + text_width//2 + 1,
+            #     'top': marker_y + 48,  # Text starts at +50, minimal padding
+            #     'bottom': marker_y + 50 + text_height
+            # })
 
     # Calculate dimension text size for the marker
     dim_text = f"{opening['width']} W x {opening['height']} H"

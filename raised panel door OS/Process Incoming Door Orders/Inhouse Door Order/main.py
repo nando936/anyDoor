@@ -76,10 +76,62 @@ from measurement_verification import verify_measurement_at_center_with_logic
 from line_detection import classify_measurements_by_lines
 from measurement_pairing_v2 import pair_measurements_by_proximity
 from visualization import create_visualization
-from claude_verification import is_suspicious_measurement, verify_measurements_with_claude, apply_claude_corrections
+from claude_verification import is_suspicious_measurement, is_partial_measurement, verify_measurements_with_claude, apply_claude_corrections
 from prompt_user_info import prompt_for_order_info
 from measurement_config import VALIDATION_CONFIG
 import json
+
+
+def expand_crop_for_partial_measurement(image_path, bounds, expansion_pixels, pos_x, pos_y, measurement_text, base_name_clean, image_dir):
+    """
+    Expand crop bounds for partial measurements and create new debug image.
+
+    Args:
+        image_path: Path to the original image
+        bounds: Current bounds dict with 'left', 'right', 'top', 'bottom'
+        expansion_pixels: How many pixels to expand (primarily to the right)
+        pos_x: X position for debug filename
+        pos_y: Y position for debug filename
+        measurement_text: Text for debug filename
+        base_name_clean: Cleaned base name for debug filename
+        image_dir: Directory to save expanded debug image
+
+    Returns:
+        Path to expanded debug image, or None if expansion failed
+    """
+    try:
+        # Load original image
+        image = cv2.imread(image_path)
+        if image is None:
+            print(f"  [WARNING] Could not load image for crop expansion: {image_path}")
+            return None
+
+        # Expand bounds (primarily to the right to catch denominator and notation)
+        # Also expand left slightly in case measurement was aligned oddly
+        left_expansion = expansion_pixels // 4  # 25% to left
+        right_expansion = expansion_pixels  # 100% to right
+        vertical_expansion = 20  # Small vertical expansion for better context
+
+        # Convert bounds to int (they may be float or numpy types)
+        new_left = int(max(0, bounds['left'] - left_expansion))
+        new_right = int(min(image.shape[1], bounds['right'] + right_expansion))
+        new_top = int(max(0, bounds['top'] - vertical_expansion))
+        new_bottom = int(min(image.shape[0], bounds['bottom'] + vertical_expansion))
+
+        # Crop with expanded bounds
+        expanded_crop = image[new_top:new_bottom, new_left:new_right]
+
+        # Save expanded debug image
+        text_safe = measurement_text.replace('/', '-').replace(' ', '')[:20]
+        expanded_debug_path = f"{image_dir}/DEBUG_{base_name_clean}_M_pos{pos_x}x{pos_y}_{text_safe}_EXPANDED.png"
+        cv2.imwrite(expanded_debug_path, expanded_crop)
+
+        print(f"  [EXPANDED] Crop expanded by {expansion_pixels}px → {expanded_debug_path}")
+        return expanded_debug_path
+
+    except Exception as e:
+        print(f"  [WARNING] Crop expansion failed: {e}")
+        return None
 
 
 def main(start_opening_number=1):
@@ -341,6 +393,25 @@ def main(start_opening_number=1):
                         # Filter out HSV images, prefer regular zoom
                         non_hsv_files = [f for f in debug_files if 'hsv' not in f.lower()]
                         debug_image = non_hsv_files[0] if non_hsv_files else debug_files[0]
+
+                        # Check if this is a partial measurement that needs crop expansion
+                        is_partial, expansion_px = is_partial_measurement(meas['text'], meas.get('raw_ocr'))
+                        if is_partial and 'bounds' in meas:
+                            print(f"  [{i}] Detected partial measurement - expanding crop by {expansion_px}px")
+                            expanded_image = expand_crop_for_partial_measurement(
+                                image_path,
+                                meas['bounds'],
+                                expansion_px,
+                                pos_x,
+                                pos_y,
+                                meas['text'],
+                                base_name_clean,
+                                image_dir
+                            )
+                            # Use expanded image if created successfully
+                            if expanded_image:
+                                debug_image = expanded_image
+
                         suspicious_measurements.append({
                             'text': meas['text'],
                             'debug_image': debug_image,
@@ -367,7 +438,7 @@ def main(start_opening_number=1):
             if suspicious_measurements:
                 corrections = verify_measurements_with_claude(suspicious_measurements, image_dir)
                 if corrections:
-                    applied, invalid_indices = apply_claude_corrections(measurements_list, corrections)
+                    applied, invalid_indices, corrected_indices = apply_claude_corrections(measurements_list, corrections)
                     print(f"\n{applied} measurements corrected by Claude")
 
                     # Remove invalid measurements (in reverse order to preserve indices)
@@ -380,6 +451,56 @@ def main(start_opening_number=1):
 
                         # Rebuild measurement_texts list to stay in sync
                         measurement_texts = [m['text'] for m in measurements_list]
+
+                    # Recalculate bounds for Claude-corrected measurements
+                    # This is needed because Claude may have added text (e.g., '6 3' → '6 3/4 F')
+                    # and the old bounds are now too narrow for the new text
+                    if corrected_indices:
+                        print("\nRecalculating bounds for Claude-corrected measurements...")
+                        # Filter out indices that were removed (invalid measurements)
+                        # Need to adjust indices after removals
+                        valid_corrected_indices = []
+                        for idx in corrected_indices:
+                            # Calculate how many items were removed before this index
+                            removals_before = sum(1 for inv_idx in invalid_indices if inv_idx < idx)
+                            adjusted_idx = idx - removals_before
+                            if adjusted_idx < len(measurements_list):
+                                valid_corrected_indices.append(adjusted_idx)
+
+                        for i in valid_corrected_indices:
+                            meas = measurements_list[i]
+                            verified_text = meas['text']
+                            center_x, center_y = meas['position']
+
+                            # NOTE: We DO recalculate bounds for F/O measurements here
+                            # because Claude corrected them from partial text (e.g., '6 3' → '6 3/4 F')
+                            # The original OCR bounds are too narrow for the corrected text
+
+                            # Use OpenCV to get actual text dimensions
+                            font = cv2.FONT_HERSHEY_SIMPLEX
+                            font_scale = 1.0
+                            thickness = 2
+                            (text_w, text_h), baseline = cv2.getTextSize(verified_text, font, font_scale, thickness)
+
+                            # Calculate new bounds centered on existing position
+                            # Add some padding (20% of text dimensions)
+                            padding_w = int(text_w * 0.2)
+                            padding_h = int(text_h * 0.2)
+
+                            new_bounds = {
+                                'left': center_x - (text_w + padding_w) / 2,
+                                'right': center_x + (text_w + padding_w) / 2,
+                                'top': center_y - (text_h + padding_h) / 2,
+                                'bottom': center_y + (text_h + padding_h) / 2
+                            }
+
+                            old_width = meas['bounds']['right'] - meas['bounds']['left']
+                            new_width = new_bounds['right'] - new_bounds['left']
+
+                            if abs(old_width - new_width) > 20:  # Significant difference
+                                print(f"  M{i+1} '{verified_text}': {old_width:.0f}px → {new_width:.0f}px")
+
+                            meas['bounds'] = new_bounds
             else:
                 print("  No suspicious measurements found - all OCR looks good!")
 
@@ -541,7 +662,8 @@ def main(start_opening_number=1):
             unpaired_heights_info=unpaired_heights_info,
             start_opening_number=start_opening_number,
             down_arrow_positions=down_arrow_positions,
-            bottom_width_line=bottom_width_line
+            bottom_width_line=bottom_width_line,
+            exclude_items=exclude_items
         )
     
         # Save pairing results to JSON
