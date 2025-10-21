@@ -187,7 +187,7 @@ def find_clear_position_for_marker(intersection_x, intersection_y, width_pos, he
     return int(best_position[0]), int(best_position[1])
 
 
-def find_down_arrows_near_heights(image, heights, all_measurements, exclude_items=None, image_path=None):
+def find_down_arrows_near_heights(image, heights, all_measurements, non_measurement_text_exclusions=None, image_path=None):
     """
     Find down arrows below each height measurement (includes HEIGHT and UNCLASSIFIED).
     Returns a list of Y-coordinates where down arrows are found.
@@ -196,7 +196,7 @@ def find_down_arrows_near_heights(image, heights, all_measurements, exclude_item
         image: The source image
         heights: List of height measurement dicts (HEIGHT + UNCLASSIFIED) with 'x', 'y', and optionally 'height_extent'
         all_measurements: List of all measurements (used to exclude text areas from arrow search)
-        exclude_items: List of non-measurement items (OL/room names) to exclude from arrow detection
+        non_measurement_text_exclusions: List of non-measurement items (OL/room names) to exclude from arrow detection
         image_path: Path to source image (for saving debug visualizations)
     """
     import cv2
@@ -285,8 +285,8 @@ def find_down_arrows_near_heights(image, heights, all_measurements, exclude_item
                 text_mask[roi_iy1:roi_iy2, roi_ix1:roi_ix2] = 0
 
         # Also exclude OL text and room names from search
-        if exclude_items:
-            for excluded_item in exclude_items:
+        if non_measurement_text_exclusions:
+            for excluded_item in non_measurement_text_exclusions:
                 if 'x' not in excluded_item or 'y' not in excluded_item:
                     continue
 
@@ -324,15 +324,30 @@ def find_down_arrows_near_heights(image, heights, all_measurements, exclude_item
         if lines is not None and len(lines) >= 2:
             print(f"    Found {len(lines)} lines in edge-detected ROI")
 
-            # Print ALL angles first to debug
+            # Print ALL detected lines with FULL details (coordinates, lengths, angles, colors)
+            print(f"    [DOWN ARROW LINE DETAILS] All detected lines:")
             all_angles = []
-            for line in lines:
+            for idx, line in enumerate(lines):
                 x1, y1, x2, y2 = line[0]
                 angle = np.degrees(np.arctan2(y2 - y1, x2 - x1))
                 # Normalize angle to 0-360 range
                 if angle < 0:
                     angle += 360
                 all_angles.append(angle)
+
+                # Calculate line length
+                length = np.sqrt((x2 - x1)**2 + (y2 - y1)**2)
+
+                # Determine color assignment based on angle range
+                if 20 <= angle <= 88:
+                    color_label = "GREEN (down-right)"
+                elif 285 <= angle <= 360:
+                    color_label = "BLUE (down-left)"
+                else:
+                    color_label = "NONE (out of range)"
+
+                print(f"      Line {idx+1}: coords=({x1},{y1})-({x2},{y2}), angle={angle:.1f}°, length={length:.1f}px, color={color_label}")
+
             print(f"    All line angles: {[f'{a:.1f}' for a in sorted(all_angles)]}")
 
             # Look for down arrow: two lines forming V pointing down
@@ -350,21 +365,113 @@ def find_down_arrows_near_heights(image, heights, all_measurements, exclude_item
                 if angle < 0:
                     angle += 360
 
+                # Calculate line length
+                length = np.sqrt((x2 - x1)**2 + (y2 - y1)**2)
+
                 # Check if line is right leg of V (20° to 88°)
                 if 20 <= angle <= 88:
-                    down_right_lines.append((x1, y1, x2, y2, angle))
+                    down_right_lines.append((x1, y1, x2, y2, angle, length))
                 # Check if line is left leg of V (285° to 360°)
                 elif 285 <= angle <= 360:
-                    down_left_lines.append((x1, y1, x2, y2, angle))
+                    down_left_lines.append((x1, y1, x2, y2, angle, length))
 
             print(f"    Down-right lines (20-88°): {len(down_right_lines)}")
             print(f"    Down-left lines (285-360°): {len(down_left_lines)}")
 
             # Check if we have at least one line in each direction
-            # If both leg types exist, we have an arrow (even if fragmented)
+            # Then validate that the lines are close together to form a valid arrow
             if down_right_lines and down_left_lines:
-                has_down_arrow = True
-                print(f"      FOUND ARROW: {len(down_right_lines)} DR lines, {len(down_left_lines)} DL lines")
+                # Check all combinations of DR and DL lines for valid arrow pairs
+                arrow_detected = False
+                for dr_line in down_right_lines:
+                    x1_dr, y1_dr, x2_dr, y2_dr, angle_dr, length_dr = dr_line
+                    center_dr_x = (x1_dr + x2_dr) / 2
+                    center_dr_y = (y1_dr + y2_dr) / 2
+
+                    for dl_line in down_left_lines:
+                        x1_dl, y1_dl, x2_dl, y2_dl, angle_dl, length_dl = dl_line
+                        center_dl_x = (x1_dl + x2_dl) / 2
+                        center_dl_y = (y1_dl + y2_dl) / 2
+
+                        # Calculate Euclidean distance between line centers
+                        distance = np.sqrt((center_dl_x - center_dr_x)**2 + (center_dl_y - center_dr_y)**2)
+
+                        if distance <= 50:
+                            # DIRECTION VALIDATION: Verify arrow actually points DOWN
+                            # For DOWN arrow (v shape):
+                            # - Lines should be CLOSER together at TOP (smaller Y, apex)
+                            # - Lines should SPREAD apart at BOTTOM (larger Y)
+
+                            # Get X coordinates at top and bottom of each line
+                            if y1_dr < y2_dr:  # DR line goes downward
+                                dr_x_top, dr_y_top = x1_dr, y1_dr
+                                dr_x_bottom, dr_y_bottom = x2_dr, y2_dr
+                            else:
+                                dr_x_top, dr_y_top = x2_dr, y2_dr
+                                dr_x_bottom, dr_y_bottom = x1_dr, y1_dr
+
+                            if y1_dl < y2_dl:  # DL line goes downward
+                                dl_x_top, dl_y_top = x1_dl, y1_dl
+                                dl_x_bottom, dl_y_bottom = x2_dl, y2_dl
+                            else:
+                                dl_x_top, dl_y_top = x2_dl, y2_dl
+                                dl_x_bottom, dl_y_bottom = x1_dl, y1_dl
+
+                            # Calculate X-distance at top vs bottom
+                            x_dist_top = abs(dr_x_top - dl_x_top)
+                            x_dist_bottom = abs(dr_x_bottom - dl_x_bottom)
+
+                            # For DOWN arrow: lines should SPREAD (x_dist_bottom > x_dist_top)
+                            # For LEFT/RIGHT arrow: lines would be parallel or converge sideways
+                            is_pointing_down = x_dist_bottom > x_dist_top
+
+                            if is_pointing_down:
+                                # Valid arrow pair found
+                                arrow_detected = True
+                                has_down_arrow = True
+                                print(f"      [DOWN ARROW PAIR FORMED]")
+                                print(f"        DR Line: coords=({x1_dr},{y1_dr})-({x2_dr},{y2_dr}), angle={angle_dr:.1f}°, length={length_dr:.1f}px, color=GREEN")
+                                print(f"        DL Line: coords=({x1_dl},{y1_dl})-({x2_dl},{y2_dl}), angle={angle_dl:.1f}°, length={length_dl:.1f}px, color=BLUE")
+
+                                # Calculate distances between the paired lines
+                                horiz_distance = abs(center_dr_x - center_dl_x)
+                                vert_distance = abs(center_dr_y - center_dl_y)
+                                print(f"        Distance between arrow legs: horizontal={horiz_distance:.1f}px, vertical={vert_distance:.1f}px, euclidean={distance:.1f}px")
+                                print(f"        Direction validation: x_dist_top={x_dist_top:.1f}px < x_dist_bottom={x_dist_bottom:.1f}px (lines SPREAD downward)")
+                                print(f"      FOUND ARROW: {len(down_right_lines)} DR lines, {len(down_left_lines)} DL lines")
+                                break  # Found valid arrow, stop searching
+                            else:
+                                print(f"      [DOWN ARROW PAIR REJECTED] Not pointing downward - lines converge at bottom (wrong direction)")
+                                print(f"        DR Line: coords=({x1_dr},{y1_dr})-({x2_dr},{y2_dr}), angle={angle_dr:.1f}°")
+                                print(f"        DL Line: coords=({x1_dl},{y1_dl})-({x2_dl},{y2_dl}), angle={angle_dl:.1f}°")
+                                print(f"        Direction check: x_dist_top={x_dist_top:.1f}px >= x_dist_bottom={x_dist_bottom:.1f}px (NOT spreading downward)")
+
+                    if arrow_detected:
+                        break  # Found valid arrow, stop outer loop
+
+                if not arrow_detected:
+                    # Lines exist but are too far apart
+                    print(f"      [DOWN ARROW REJECTED] Lines too far apart")
+                    for dr_idx, dr_line in enumerate(down_right_lines):
+                        x1, y1, x2, y2, angle, length = dr_line
+                        print(f"        DR Line {dr_idx+1}: coords=({x1},{y1})-({x2},{y2}), angle={angle:.1f}°, length={length:.1f}px, color=GREEN")
+                    for dl_idx, dl_line in enumerate(down_left_lines):
+                        x1, y1, x2, y2, angle, length = dl_line
+                        print(f"        DL Line {dl_idx+1}: coords=({x1},{y1})-({x2},{y2}), angle={angle:.1f}°, length={length:.1f}px, color=BLUE")
+
+                    # Show why each pair was rejected
+                    for dr_line in down_right_lines:
+                        x1_dr, y1_dr, x2_dr, y2_dr, angle_dr, length_dr = dr_line
+                        center_dr_x = (x1_dr + x2_dr) / 2
+                        center_dr_y = (y1_dr + y2_dr) / 2
+
+                        for dl_line in down_left_lines:
+                            x1_dl, y1_dl, x2_dl, y2_dl, angle_dl, length_dl = dl_line
+                            center_dl_x = (x1_dl + x2_dl) / 2
+                            center_dl_y = (y1_dl + y2_dl) / 2
+
+                            distance = np.sqrt((center_dl_x - center_dr_x)**2 + (center_dl_y - center_dr_y)**2)
+                            print(f"        Pair distance: {distance:.1f}px > 50px threshold")
 
         print(f"    Down arrow detected: {has_down_arrow}")
 
@@ -377,10 +484,10 @@ def find_down_arrows_near_heights(image, heights, all_measurements, exclude_item
             # Color code: GREEN for down-right lines, BLUE for down-left lines
             if 'down_right_lines' in locals() and 'down_left_lines' in locals():
                 # Draw down-right lines in GREEN
-                for x1, y1, x2, y2, angle in down_right_lines:
+                for x1, y1, x2, y2, angle, length in down_right_lines:
                     cv2.line(roi_viz, (x1, y1), (x2, y2), (0, 255, 0), 2)
                 # Draw down-left lines in BLUE
-                for x1, y1, x2, y2, angle in down_left_lines:
+                for x1, y1, x2, y2, angle, length in down_left_lines:
                     cv2.line(roi_viz, (x1, y1), (x2, y2), (255, 0, 0), 2)
 
                 # If arrow was detected, circle the center
@@ -388,10 +495,10 @@ def find_down_arrows_near_heights(image, heights, all_measurements, exclude_item
                     # Calculate arrow center in ROI coordinates for visualization
                     all_y_coords_viz = []
                     all_x_coords_viz = []
-                    for x1, y1, x2, y2, angle in down_right_lines:
+                    for x1, y1, x2, y2, angle, length in down_right_lines:
                         all_y_coords_viz.extend([y1, y2])
                         all_x_coords_viz.extend([x1, x2])
-                    for x1, y1, x2, y2, angle in down_left_lines:
+                    for x1, y1, x2, y2, angle, length in down_left_lines:
                         all_y_coords_viz.extend([y1, y2])
                         all_x_coords_viz.extend([x1, x2])
 
@@ -443,10 +550,10 @@ def find_down_arrows_near_heights(image, heights, all_measurements, exclude_item
             all_x_coords = []
 
             # Collect Y coordinates from all detected arrow lines
-            for x1, y1, x2, y2, angle in down_right_lines:
+            for x1, y1, x2, y2, angle, length in down_right_lines:
                 all_y_coords.extend([y1, y2])
                 all_x_coords.extend([x1, x2])
-            for x1, y1, x2, y2, angle in down_left_lines:
+            for x1, y1, x2, y2, angle, length in down_left_lines:
                 all_y_coords.extend([y1, y2])
                 all_x_coords.extend([x1, x2])
 
@@ -512,7 +619,7 @@ def is_height_above_width_with_angle(height_pos, width_pos, hline_angle_degrees)
     return projection < 0  # Negative projection means "above"
 
 
-def pair_measurements_by_proximity(classified_measurements, all_measurements, image=None, image_path=None, exclude_items=None, x2_multiplier=1):
+def pair_measurements_by_proximity(classified_measurements, all_measurements, image=None, image_path=None, non_measurement_text_exclusions=None, x2_multiplier=1):
     """
     V2 - New pairing logic
 
@@ -576,7 +683,7 @@ def pair_measurements_by_proximity(classified_measurements, all_measurements, im
         import numpy as np
 
         # Find down arrows below height measurements
-        down_arrow_y_positions = find_down_arrows_near_heights(image, heights, all_measurements, exclude_items, image_path)
+        down_arrow_y_positions = find_down_arrows_near_heights(image, heights, all_measurements, non_measurement_text_exclusions, image_path)
 
         # Store bottom width reference line for visualization
         bottom_width_line = None
@@ -602,7 +709,7 @@ def pair_measurements_by_proximity(classified_measurements, all_measurements, im
             print(f"    Left side arrows: {len(left_arrows)}")
             print(f"    Right side arrows: {len(right_arrows)}")
 
-            Y_DELTA_THRESHOLD = 200  # Max Y difference between left and right arrows
+            Y_DELTA_THRESHOLD = 350  # Max Y difference between left and right arrows
 
             # Initialize variables
             leftmost_lowest_arrow = None
@@ -620,8 +727,9 @@ def pair_measurements_by_proximity(classified_measurements, all_measurements, im
                 if y_delta > Y_DELTA_THRESHOLD:
                     print(f"    WARNING: Y-delta between arrows ({y_delta}px) exceeds threshold ({Y_DELTA_THRESHOLD}px)")
                     print(f"    Skipping bottom width classification - arrows not at same horizontal level")
-                    bottom_width_line = None
+                    print(f"    Drawing reference line anyway (for visualization)")
                     arrows_rejected = True
+                    # Still create bottom_width_line for visualization (continue to line creation below)
                 else:
                     print(f"    Y-delta between arrows: {y_delta}px (within {Y_DELTA_THRESHOLD}px threshold)")
                     print(f"    Lowest arrow on LEFT side: ({leftmost_lowest_arrow[0]}, {leftmost_lowest_arrow[1]})")
@@ -654,17 +762,17 @@ def pair_measurements_by_proximity(classified_measurements, all_measurements, im
                 print(f"    No arrows found on either side")
                 bottom_width_line = None
 
-            # Store line for visualization and proceed with classification if we have valid arrows
-            if leftmost_lowest_arrow is not None and rightmost_lowest_arrow is not None and not arrows_rejected:
-                # This handles Cases 1 (valid y_delta), 2, and 3
-                # Set bottom_width_line so the rest of the code can proceed
+            # Store line for visualization (always create if arrows exist)
+            if leftmost_lowest_arrow is not None and rightmost_lowest_arrow is not None:
+                # Create bottom_width_line for visualization even if arrows_rejected=True
+                # This allows visualization to draw the reference line regardless of Y-delta threshold
                 bottom_width_line = {
                     'start': leftmost_lowest_arrow,
                     'end': rightmost_lowest_arrow
                 }
 
-            # Only proceed with bottom width classification if we have a valid line
-            if bottom_width_line is not None:
+            # Only proceed with bottom width classification if we have a valid line AND arrows not rejected
+            if bottom_width_line is not None and not arrows_rejected:
                 # Calculate GLOBAL smallest height value across ALL heights
                 # This will be used to create ONE shared offset reference line
                 from shared_utils import fraction_to_decimal

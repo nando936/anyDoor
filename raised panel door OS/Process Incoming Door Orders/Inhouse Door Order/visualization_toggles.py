@@ -28,7 +28,7 @@ Usage:
 #   - Cyan scan ROIs (drawer detection area above extent line)
 #   - Down arrow circles and labels (A1, A2, A3, etc.)
 #   - Green bottom width reference line connecting arrows
-SHOW_BOTTOM_WIDTH_GROUP = False  # Set to True to show all bottom width visualizations
+SHOW_BOTTOM_WIDTH_GROUP = True  # Set to True to show all bottom width visualizations
 
 # NON-BOTTOM WIDTH EXTENT LINES: Show projected h-line extents for regular widths
 #   - Shows the horizontal extent line used during pairing algorithm
@@ -55,8 +55,8 @@ DEBUG_EXTENT_LINES_FOR_MEASUREMENTS = [8]  # None = show all, or [8] = M8 only, 
 #   - Labels showing tolerance values
 SHOW_CENTER_ZONES = False  # Set to True to show center zone visualizations
 
-# DEBUG TEXT BOXES: Show OCR text with boxes below actual measurements
-SHOW_DEBUG_TEXT_BOXES = False  # Set to True to show debug text boxes and OCR text
+# DEBUG TEXT BOXES: Show OCR text with boxes below actual measurements and room name bounds
+SHOW_DEBUG_TEXT_BOXES = True  # Set to True to show debug text boxes, OCR text, and room name bounds
 
 # DETECTED LINES: Show actual h-lines and v-lines detected by HoughLinesP
 #   - Yellow lines for detected h-lines (left and right ROIs)
