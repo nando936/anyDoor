@@ -204,12 +204,13 @@ def verify_measurement_at_center_with_logic(image_path, center, bounds, texts, a
     x_coords = [bounds['left'], bounds['right']]
     y_coords = [bounds['top'], bounds['bottom']]
 
-    # Define crop region with different horizontal and vertical padding
+    # Define crop region with asymmetric horizontal padding
     padding_v = ZOOM_CONFIG['padding']  # Vertical padding
-    padding_h = ZOOM_CONFIG.get('padding_horizontal', padding_v)  # Horizontal padding (wider)
+    padding_h = ZOOM_CONFIG.get('padding_horizontal', padding_v)  # Left horizontal padding (normal)
+    padding_right = ZOOM_CONFIG.get('padding_right', padding_h)  # Right horizontal padding (extra for F notation)
     crop_x1 = max(0, int(min(x_coords) - padding_h))
     crop_y1 = max(0, int(min(y_coords) - padding_v))
-    crop_x2 = int(max(x_coords) + padding_h)
+    crop_x2 = int(max(x_coords) + padding_right)
     crop_y2 = int(max(y_coords) + padding_v)
 
     # Convert Windows network paths to Unix-style for OpenCV

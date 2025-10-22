@@ -20,7 +20,8 @@ GROUPING_CONFIG = {
 # Zoom verification parameters
 ZOOM_CONFIG = {
     'padding': 15,           # Vertical padding (top/bottom) - reduced to allow close measurements
-    'padding_horizontal': 90, # Horizontal padding (left/right) - increased to capture F notation
+    'padding_horizontal': 50, # Horizontal padding (left side) - normal padding
+    'padding_right': 90,     # Horizontal padding (right side) - extra padding for F notation
     'zoom_factor': 1         # Magnification factor (Phase 2 verification)
 }
 

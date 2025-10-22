@@ -109,13 +109,18 @@ def is_suspicious_measurement(text, raw_ocr=None):
 
     # Check raw OCR for suspicious patterns (before cleaning removed them)
     if raw_ocr and not raw_ocr_valid:
-        # Pattern 0: Leading dash or minus in RAW OCR (e.g., "-9-" which gets cleaned to "9")
-        # If raw OCR had issues but cleaning fixed it (cleaned text passed validation),
-        # we still want to note it for logging purposes
-        if raw_ocr.startswith('-') or raw_ocr.startswith('−'):
-            # Cleaned text already passed validation (line 62), so cleaning fixed it
-            # This is just for information - not marking as suspicious
-            pass
+        # Pattern 0: Dashes in RAW OCR (e.g., "-9-", "9-", "-22" which get cleaned to "9", "22")
+        # Flag measurements with dashes as suspicious for Claude verification
+        # Dashes often indicate arrow symbols that were misread by OCR
+        # Check for various dash types: hyphen (-), minus (−), en-dash (–), em-dash (—)
+        dash_chars = ['-', '−', '–', '—']
+        has_leading_dash = any(raw_ocr.startswith(d) for d in dash_chars)
+        has_trailing_dash = any(raw_ocr.endswith(d) for d in dash_chars)
+
+        if has_leading_dash or has_trailing_dash:
+            # Even though cleaned text passed validation, the presence of dashes
+            # indicates potential arrow symbols that need Claude verification
+            return True, "has_dashes_around_measurement"
 
     # Additional validation for measurements that passed the basic pattern check
     # These checks catch logically invalid measurements (impossible fractions, too large, etc.)
