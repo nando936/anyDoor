@@ -199,7 +199,7 @@ def main(start_opening_number=1):
         print(f"{'='*60}")
 
         # Phase 1: Find interest areas
-        interest_areas, room_name, overlay_info, opencv_regions, exclude_items, x2_multiplier = find_interest_areas(image_path, api_key)
+        interest_areas, room_name, overlay_info, opencv_regions, non_measurement_text_exclusions, x2_multiplier = find_interest_areas(image_path, api_key)
 
         if not interest_areas:
             print("[WARNING] No interest areas found")
@@ -227,7 +227,7 @@ def main(start_opening_number=1):
                 api_key,
                 center_index=i,
                 save_debug=True,
-                exclude_items=exclude_items
+                non_measurement_text_exclusions=non_measurement_text_exclusions
             )
 
             if result and result[0]:
@@ -471,10 +471,15 @@ def main(start_opening_number=1):
                             meas = measurements_list[i]
                             verified_text = meas['text']
                             center_x, center_y = meas['position']
+                            current_bounds = meas['bounds']
 
                             # NOTE: We DO recalculate bounds for F/O measurements here
                             # because Claude corrected them from partial text (e.g., '6 3' → '6 3/4 F')
                             # The original OCR bounds are too narrow for the corrected text
+
+                            # Get original text before Claude correction
+                            # We need to compare to determine which side text was added
+                            original_text = meas.get('original_ocr', '')
 
                             # Use OpenCV to get actual text dimensions
                             font = cv2.FONT_HERSHEY_SIMPLEX
@@ -482,23 +487,42 @@ def main(start_opening_number=1):
                             thickness = 2
                             (text_w, text_h), baseline = cv2.getTextSize(verified_text, font, font_scale, thickness)
 
-                            # Calculate new bounds centered on existing position
                             # Add some padding (20% of text dimensions)
                             padding_w = int(text_w * 0.2)
                             padding_h = int(text_h * 0.2)
 
-                            new_bounds = {
-                                'left': center_x - (text_w + padding_w) / 2,
-                                'right': center_x + (text_w + padding_w) / 2,
-                                'top': center_y - (text_h + padding_h) / 2,
-                                'bottom': center_y + (text_h + padding_h) / 2
-                            }
+                            # DIRECTIONAL EXPANSION: Only expand the side where text was added
+                            # Compare original vs corrected text to detect which side changed
+                            new_bounds = {}
 
-                            old_width = meas['bounds']['right'] - meas['bounds']['left']
+                            if original_text and verified_text.startswith(original_text):
+                                # Text added to RIGHT (most common: "6 3/" → "6 3/4 F")
+                                # Keep left bound fixed, expand right bound
+                                new_bounds['left'] = current_bounds['left']
+                                new_bounds['right'] = current_bounds['left'] + text_w + padding_w
+                                print(f"  M{i+1} '{original_text}' → '{verified_text}': RIGHT expansion only")
+                            elif original_text and verified_text.endswith(original_text):
+                                # Text added to LEFT (rare case)
+                                # Keep right bound fixed, expand left bound
+                                new_bounds['right'] = current_bounds['right']
+                                new_bounds['left'] = current_bounds['right'] - text_w - padding_w
+                                print(f"  M{i+1} '{original_text}' → '{verified_text}': LEFT expansion only")
+                            else:
+                                # Text changed in middle or both sides (complex case)
+                                # Use symmetric expansion as fallback
+                                new_bounds['left'] = center_x - (text_w + padding_w) / 2
+                                new_bounds['right'] = center_x + (text_w + padding_w) / 2
+                                print(f"  M{i+1} '{original_text}' → '{verified_text}': SYMMETRIC expansion (complex change)")
+
+                            # Vertical bounds: always use symmetric expansion (text height doesn't change direction)
+                            new_bounds['top'] = center_y - (text_h + padding_h) / 2
+                            new_bounds['bottom'] = center_y + (text_h + padding_h) / 2
+
+                            old_width = current_bounds['right'] - current_bounds['left']
                             new_width = new_bounds['right'] - new_bounds['left']
 
                             if abs(old_width - new_width) > 20:  # Significant difference
-                                print(f"  M{i+1} '{verified_text}': {old_width:.0f}px → {new_width:.0f}px")
+                                print(f"    Width change: {old_width:.0f}px → {new_width:.0f}px")
 
                             meas['bounds'] = new_bounds
             else:
@@ -562,7 +586,7 @@ def main(start_opening_number=1):
             # Load image for line detection
             image_cv = cv2.imread(img_path)
             if image_cv is not None:
-                classified, measurement_categories = classify_measurements_by_lines(image_cv, measurements_list, image_path=img_path, exclude_items=exclude_items, all_measurements=measurements_list)
+                classified, measurement_categories = classify_measurements_by_lines(image_cv, measurements_list, image_path=img_path, non_measurement_text_exclusions=non_measurement_text_exclusions, all_measurements=measurements_list)
 
                 # Link categories back to measurements for visualization
                 for meas, category in zip(measurements_list, measurement_categories):
@@ -590,7 +614,7 @@ def main(start_opening_number=1):
             phase_logger.switch_phase("4", "pairing")
 
             print("\n=== PHASE 4: Pairing Measurements into Cabinet Openings ===")
-            paired_openings, unpaired_heights_info, down_arrow_positions, bottom_width_line = pair_measurements_by_proximity(measurement_categories, measurements_list, image_cv, image_path, exclude_items, x2_multiplier)
+            paired_openings, unpaired_heights_info, down_arrow_positions, bottom_width_line = pair_measurements_by_proximity(measurement_categories, measurements_list, image_cv, image_path, non_measurement_text_exclusions, x2_multiplier)
     
             if paired_openings:
                 print("\nCABINET OPENING SPECIFICATIONS:")
@@ -663,7 +687,7 @@ def main(start_opening_number=1):
             start_opening_number=start_opening_number,
             down_arrow_positions=down_arrow_positions,
             bottom_width_line=bottom_width_line,
-            exclude_items=exclude_items
+            non_measurement_text_exclusions=non_measurement_text_exclusions
         )
     
         # Save pairing results to JSON

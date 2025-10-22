@@ -49,7 +49,7 @@ def create_visualization(
     start_opening_number=1,
     down_arrow_positions=None,
     bottom_width_line=None,
-    exclude_items=None
+    non_measurement_text_exclusions=None
 ):
     """Create visualization showing groups and measurements side by side"""
 
@@ -1330,7 +1330,7 @@ def create_visualization(
                 placed_markers,  # Pass existing markers to avoid
                 overlay_info,  # Pass overlay info for dimension text
                 radius,  # Pass the calculated radius
-                exclude_items  # Pass room name text bounds for collision avoidance
+                non_measurement_text_exclusions  # Pass room name text bounds for collision avoidance
             )
 
             # Draw white filled circle with colored outline for opening number

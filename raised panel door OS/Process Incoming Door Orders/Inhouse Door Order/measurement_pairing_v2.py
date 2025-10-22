@@ -6,6 +6,124 @@ New improved approach for pairing width and height measurements.
 
 import numpy as np
 import cv2
+import subprocess
+import tempfile
+import os
+import platform
+from measurement_config import HSV_CONFIG
+
+
+def verify_arrow_with_claude(roi_image, arrow_direction, image_path=None, measurement_id=None, measurement_value=None):
+    """
+    Use Claude CLI to verify if an arrow is visible in the ROI image.
+
+    Args:
+        roi_image: OpenCV color image (numpy array) of the ROI
+        arrow_direction: 'down', 'left', or 'right'
+        image_path: Path to the original page image (for saving verification image in same folder)
+        measurement_id: Measurement ID (e.g., "M3")
+        measurement_value: Measurement value (e.g., "22 7/8")
+
+    Returns:
+        True if Claude sees the arrow, False otherwise
+    """
+    # Debug: print received parameters
+    print(f"    [DEBUG] image_path={image_path}, measurement_id={measurement_id}, measurement_value={measurement_value}")
+
+    # Determine save path
+    if image_path and measurement_id and measurement_value:
+        # Save in same directory as page image with descriptive name
+        image_dir = os.path.dirname(os.path.abspath(image_path))
+        base_name = os.path.splitext(os.path.basename(image_path))[0]
+        # Clean base name (remove underscores/dashes for consistency)
+        base_name_clean = base_name.replace('_', '').replace('-', '')
+        # Clean measurement value (replace spaces and slashes)
+        value_clean = measurement_value.replace(' ', '').replace('/', '-')
+        # Create descriptive filename
+        verification_filename = f"{base_name_clean}_{measurement_id}_{value_clean}_claude_verification.png"
+        save_path = os.path.join(image_dir, verification_filename)
+    else:
+        # Fallback to temp directory
+        temp_dir = tempfile.gettempdir()
+        save_path = os.path.join(temp_dir, f"arrow_verify_{arrow_direction}.png")
+
+    # Isolate green arrow with edge enhancement on white background
+    # Step 1: Convert to HSV for green color filtering
+    hsv = cv2.cvtColor(roi_image, cv2.COLOR_BGR2HSV)
+
+    # Step 2: Create mask for green pixels using HSV_CONFIG ranges
+    lower_green = np.array(HSV_CONFIG['lower_green'])
+    upper_green = np.array(HSV_CONFIG['upper_green'])
+    green_mask = cv2.inRange(hsv, lower_green, upper_green)
+
+    # Step 3: Create white background image
+    white_background = np.ones_like(roi_image, dtype=np.uint8) * 255
+
+    # Step 4: Copy only green pixels to white background
+    # Where green_mask is 255 (green pixel detected), copy original pixel
+    # Where green_mask is 0 (no green), keep white background
+    green_isolated = white_background.copy()
+    green_isolated[green_mask > 0] = roi_image[green_mask > 0]
+
+    # Step 5: Add edge enhancement on the green mask
+    # Detect edges on the green mask (not the full image)
+    edges = cv2.Canny(green_mask, 50, 150)
+
+    # Step 6: Draw edges in red for high visibility
+    # Where edges exist, set pixel to red (BGR: 0, 0, 255)
+    edge_mask = edges > 0
+    green_isolated[edge_mask] = [0, 0, 255]  # Red in BGR
+
+    # Save cleaned-up image (green arrow + red edges on white background)
+    cv2.imwrite(save_path, green_isolated)
+    print(f"    [CLAUDE VERIFICATION] Saved verification image: {save_path}")
+    print(f"    [CLAUDE VERIFICATION] Image shows: green arrow isolated on white background with red edge enhancement")
+
+    try:
+        # Determine claude command based on platform
+        if platform.system() == "Windows":
+            claude_cmd = "claude.cmd"
+        else:
+            claude_cmd = "claude"
+
+        # Ask Claude if arrow is visible with clearer prompt
+        if arrow_direction == "down":
+            question = "Look at this image. Do you see a green arrow pointing downward? Answer only YES or NO."
+        elif arrow_direction == "left":
+            question = "Look at this image. Do you see a green arrow pointing to the left? Answer only YES or NO."
+        elif arrow_direction == "right":
+            question = "Look at this image. Do you see a green arrow pointing to the right? Answer only YES or NO."
+        else:
+            question = f"Look at this image. Do you see a green arrow pointing {arrow_direction}? Answer only YES or NO."
+
+        # Get image directory for --add-dir permission
+        image_dir = os.path.dirname(os.path.abspath(save_path))
+
+        # Build prompt with image path
+        prompt = f"{question}\n\nImage: {save_path}"
+
+        # Run claude CLI with correct syntax (same as claude_verification.py)
+        result = subprocess.run(
+            f'{claude_cmd} --print --add-dir "{image_dir}"',
+            input=prompt,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            shell=True
+        )
+
+        # Parse response
+        response = result.stdout.strip().upper()
+        claude_sees_arrow = "YES" in response
+
+        print(f"    [CLAUDE VERIFICATION] {arrow_direction} arrow: Claude says {'YES' if claude_sees_arrow else 'NO'}")
+        print(f"    [CLAUDE RESPONSE] {response[:100]}")
+
+        return claude_sees_arrow
+
+    except Exception as e:
+        print(f"    [CLAUDE VERIFICATION ERROR] {str(e)}")
+        return False
 
 
 def add_fraction_to_measurement(measurement, fraction_to_add):
@@ -250,12 +368,27 @@ def find_down_arrows_near_heights(image, heights, all_measurements, non_measurem
             print(f"    ROI is empty, skipping")
             continue
 
-        # Use edge-based arrow detection (same as test_m5_arrow.py)
-        # Convert to grayscale
-        gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+        # GREEN ISOLATION PREPROCESSING (same as Claude verification)
+        # This isolates the green arrow on a white background, removing cabinet edges, shadows, and noise
 
-        # Create mask for text exclusion
-        text_mask = np.ones_like(gray, dtype=np.uint8) * 255
+        # Step 1: Convert to HSV for green color filtering
+        hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+
+        # Step 2: Create mask for green pixels using HSV_CONFIG ranges
+        lower_green = np.array(HSV_CONFIG['lower_green'])
+        upper_green = np.array(HSV_CONFIG['upper_green'])
+        green_mask = cv2.inRange(hsv, lower_green, upper_green)
+
+        # Step 3: Create white background image
+        white_background = np.ones_like(roi, dtype=np.uint8) * 255
+
+        # Step 4: Copy only green pixels to white background
+        green_isolated = white_background.copy()
+        green_isolated[green_mask > 0] = roi[green_mask > 0]
+
+        # Step 5: Create mask for text exclusion (on green_mask, not on grayscale)
+        # Start with the green mask (only green pixels), then further exclude text areas
+        text_excluded_mask = green_mask.copy()
 
         # Exclude other measurement text areas from search to avoid detecting arrows in text
         for other_meas in all_measurements:
@@ -282,7 +415,7 @@ def find_down_arrows_near_heights(image, heights, all_measurements, non_measurem
                 roi_ix2 = intersect_x2 - roi_x1
                 roi_iy2 = intersect_y2 - roi_y1
                 # Zero out this region in the mask
-                text_mask[roi_iy1:roi_iy2, roi_ix1:roi_ix2] = 0
+                text_excluded_mask[roi_iy1:roi_iy2, roi_ix1:roi_ix2] = 0
 
         # Also exclude OL text and room names from search
         if non_measurement_text_exclusions:
@@ -309,13 +442,49 @@ def find_down_arrows_near_heights(image, heights, all_measurements, non_measurem
                     roi_ix2 = intersect_x2 - roi_x1
                     roi_iy2 = intersect_y2 - roi_y1
                     # Zero out this region in the mask
-                    text_mask[roi_iy1:roi_iy2, roi_ix1:roi_ix2] = 0
+                    text_excluded_mask[roi_iy1:roi_iy2, roi_ix1:roi_ix2] = 0
 
-        # Apply text exclusion mask
-        gray_masked = cv2.bitwise_and(gray, gray, mask=text_mask)
+        # Step 6: Apply text exclusion to green isolated image
+        green_isolated_masked = white_background.copy()
+        green_isolated_masked[text_excluded_mask > 0] = green_isolated[text_excluded_mask > 0]
 
-        # Detect edges on grayscale (not green-filtered)
-        edges = cv2.Canny(gray_masked, 50, 150)
+        # SAVE DEBUG IMAGE: Save green-isolated arrow detection image for ALL measurements
+        if image_dir and base_name_clean:
+            # Create visualization showing green isolated image with red edge overlay
+            debug_vis = green_isolated_masked.copy()
+            # Overlay red edges on the debug visualization
+            edge_preview = cv2.Canny(cv2.cvtColor(green_isolated_masked, cv2.COLOR_BGR2GRAY), 50, 150)
+            debug_vis[edge_preview > 0] = [0, 0, 255]  # Red edges
+
+            # Get measurement ID for descriptive filename (same logic as Claude verification)
+            meas_id = height.get('id', '')
+            if not meas_id:
+                # Try to find measurement ID from all_measurements
+                for i, meas in enumerate(all_measurements):
+                    if (abs(meas.get('x', 0) - height_x) < 5 and
+                        abs(meas.get('y', 0) - height_y) < 5 and
+                        meas.get('text') == height.get('text')):
+                        meas_id = meas.get('id', i+1)
+                        break
+
+            # Use index+1 as fallback if no ID found
+            if not meas_id:
+                meas_id = heights.index(height) + 1
+
+            # Format measurement value for filename (replace spaces and slashes)
+            meas_value_clean = height['text'].replace(' ', '-').replace('/', '-')
+
+            # Save with descriptive filename
+            debug_filename = f"{base_name_clean}_M{meas_id}_{meas_value_clean}_down_arrow_detection.png"
+            debug_path = os.path.join(image_dir, debug_filename)
+            cv2.imwrite(debug_path, debug_vis)
+            print(f"    [DEBUG] Saved arrow detection image: {debug_filename}")
+
+        # Step 7: Convert green-isolated image to grayscale for edge detection
+        gray_green = cv2.cvtColor(green_isolated_masked, cv2.COLOR_BGR2GRAY)
+
+        # Step 8: Detect edges on the green-isolated grayscale image
+        edges = cv2.Canny(gray_green, 50, 150)
 
         # Find lines
         lines = cv2.HoughLinesP(edges, 1, np.pi/180, threshold=10, minLineLength=10, maxLineGap=5)
@@ -403,19 +572,21 @@ def find_down_arrows_near_heights(image, heights, all_measurements, non_measurem
                             # - Lines should SPREAD apart at BOTTOM (larger Y)
 
                             # Get X coordinates at top and bottom of each line
-                            if y1_dr < y2_dr:  # DR line goes downward
-                                dr_x_top, dr_y_top = x1_dr, y1_dr
-                                dr_x_bottom, dr_y_bottom = x2_dr, y2_dr
-                            else:
-                                dr_x_top, dr_y_top = x2_dr, y2_dr
-                                dr_x_bottom, dr_y_bottom = x1_dr, y1_dr
+                            # REVERSED: smaller Y (higher on screen) is actually the BOTTOM (spread point)
+                            # larger Y (lower on screen) is actually the TOP (apex)
+                            if y1_dr < y2_dr:  # y1 is higher on screen (smaller Y) = bottom endpoint
+                                dr_x_top, dr_y_top = x2_dr, y2_dr      # Apex is at y2 (larger Y)
+                                dr_x_bottom, dr_y_bottom = x1_dr, y1_dr  # Spread point at y1 (smaller Y)
+                            else:  # y2 is higher on screen (smaller Y) = bottom endpoint
+                                dr_x_top, dr_y_top = x1_dr, y1_dr      # Apex is at y1 (larger Y)
+                                dr_x_bottom, dr_y_bottom = x2_dr, y2_dr  # Spread point at y2 (smaller Y)
 
-                            if y1_dl < y2_dl:  # DL line goes downward
-                                dl_x_top, dl_y_top = x1_dl, y1_dl
-                                dl_x_bottom, dl_y_bottom = x2_dl, y2_dl
-                            else:
-                                dl_x_top, dl_y_top = x2_dl, y2_dl
-                                dl_x_bottom, dl_y_bottom = x1_dl, y1_dl
+                            if y1_dl < y2_dl:  # y1 is higher on screen (smaller Y) = bottom endpoint
+                                dl_x_top, dl_y_top = x2_dl, y2_dl      # Apex is at y2 (larger Y)
+                                dl_x_bottom, dl_y_bottom = x1_dl, y1_dl  # Spread point at y1 (smaller Y)
+                            else:  # y2 is higher on screen (smaller Y) = bottom endpoint
+                                dl_x_top, dl_y_top = x1_dl, y1_dl      # Apex is at y1 (larger Y)
+                                dl_x_bottom, dl_y_bottom = x2_dl, y2_dl  # Spread point at y2 (smaller Y)
 
                             # Calculate X-distance at top vs bottom
                             x_dist_top = abs(dr_x_top - dl_x_top)
@@ -472,6 +643,44 @@ def find_down_arrows_near_heights(image, heights, all_measurements, non_measurem
 
                             distance = np.sqrt((center_dl_x - center_dr_x)**2 + (center_dl_y - center_dr_y)**2)
                             print(f"        Pair distance: {distance:.1f}px > 50px threshold")
+
+            # SINGLE LEG DETECTION: Check if only one leg exists
+            elif (len(down_right_lines) > 0 and len(down_left_lines) == 0) or (len(down_left_lines) > 0 and len(down_right_lines) == 0):
+                print(f"    [SINGLE LEG DETECTED] Found {len(down_right_lines)} down-right and {len(down_left_lines)} down-left lines")
+
+                # Get measurement ID for descriptive filename
+                meas_id = height.get('id', '')
+                if not meas_id:
+                    # Try to find measurement ID from all_measurements
+                    for i, meas in enumerate(all_measurements):
+                        if (abs(meas.get('x', 0) - height_x) < 5 and
+                            abs(meas.get('y', 0) - height_y) < 5 and
+                            meas.get('text') == height.get('text')):
+                            meas_id = meas.get('id', i+1)
+                            break
+
+                # Format measurement ID as "M{id}"
+                # Use index+1 as fallback if no ID found
+                if not meas_id:
+                    meas_id = heights.index(height) + 1
+                measurement_id_str = f"M{meas_id}"
+                measurement_value_str = height.get('text', '')
+
+                # Verify with Claude vision API
+                # Pass colored ROI for edge enhancement visualization
+                claude_result = verify_arrow_with_claude(
+                    roi,
+                    'down',
+                    image_path=image_path,
+                    measurement_id=measurement_id_str,
+                    measurement_value=measurement_value_str
+                )
+
+                if claude_result:
+                    print(f"    [CLAUDE CONFIRMED] Arrow detected by Claude vision API")
+                    has_down_arrow = True
+                else:
+                    print(f"    [CLAUDE REJECTED] No arrow confirmed by Claude vision API")
 
         print(f"    Down arrow detected: {has_down_arrow}")
 
@@ -642,7 +851,8 @@ def pair_measurements_by_proximity(classified_measurements, all_measurements, im
                     'y': meas['position'][1],
                     'bounds': meas.get('bounds', None),
                     'h_line_angle': meas.get('h_line_angle', 0),
-                    'is_finished_size': meas.get('is_finished_size', False)
+                    'is_finished_size': meas.get('is_finished_size', False),
+                    'id': meas.get('id', i+1)
                 }
                 # Capture h_lines if available
                 if 'h_lines' in meas:
@@ -658,7 +868,8 @@ def pair_measurements_by_proximity(classified_measurements, all_measurements, im
                     'y': meas['position'][1],
                     'bounds': meas.get('bounds', None),
                     'v_line_angle': meas.get('v_line_angle', 90),
-                    'is_finished_size': meas.get('is_finished_size', False)
+                    'is_finished_size': meas.get('is_finished_size', False),
+                    'id': meas.get('id', i+1)
                 }
                 if 'notation' in meas:
                     height_data['notation'] = meas['notation']

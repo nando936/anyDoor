@@ -120,7 +120,7 @@ def find_opencv_supplemental_regions_better(hsv_image, all_vision_detections):
     return additional_regions
 
 
-def find_opencv_supplemental_regions(hsv_image, all_vision_detections):
+def find_opencv_supplemental_regions(hsv_image, categorized_detections):
     """Find additional text regions using OpenCV in areas Vision API missed
 
     Focus: Detect text regions while excluding lines using multiple validation techniques
@@ -149,24 +149,40 @@ def find_opencv_supplemental_regions(hsv_image, all_vision_detections):
         center_x = x + w//2
         center_y = y + h//2
 
-        # Check if overlaps with Vision API detections or their zoom areas
+        # Check if overlaps with categorized detections or their zoom areas
         is_covered = False
         # Use the same padding that will be used for zoom ROI areas
         zoom_padding_h = ZOOM_CONFIG['padding_horizontal']
         zoom_padding_v = ZOOM_CONFIG['padding']
 
-        for vision_item in all_vision_detections:
-            # Expand Vision API bounds by zoom padding to exclude zoom ROI areas
-            vision_left = vision_item['x_min'] - zoom_padding_h
-            vision_right = vision_item['x_max'] + zoom_padding_h
-            vision_top = vision_item['y_min'] - zoom_padding_v
-            vision_bottom = vision_item['y_max'] + zoom_padding_v
+        for item in categorized_detections:
+            # Get bounds from item - handle different structures
+            if 'bounds' in item:
+                # Items with bounds dict (from non_measurement_text_exclusions)
+                item_left = item['bounds']['left'] - zoom_padding_h
+                item_right = item['bounds']['right'] + zoom_padding_h
+                item_top = item['bounds']['top'] - zoom_padding_v
+                item_bottom = item['bounds']['bottom'] + zoom_padding_v
+            elif 'vertices' in item and item['vertices']:
+                # Items with vertices (from text_items)
+                x_coords = [v['x'] for v in item['vertices']]
+                y_coords = [v['y'] for v in item['vertices']]
+                item_left = min(x_coords) - zoom_padding_h
+                item_right = max(x_coords) + zoom_padding_h
+                item_top = min(y_coords) - zoom_padding_v
+                item_bottom = max(y_coords) + zoom_padding_v
+            else:
+                # Items with only center (approximate bounds)
+                item_left = item['x'] - 10 - zoom_padding_h
+                item_right = item['x'] + 10 + zoom_padding_h
+                item_top = item['y'] - 10 - zoom_padding_v
+                item_bottom = item['y'] + 10 + zoom_padding_v
 
-            # Check if OpenCV region overlaps with expanded Vision area (includes zoom ROI)
-            if not (x + w < vision_left or
-                    x > vision_right or
-                    y + h < vision_top or
-                    y > vision_bottom):
+            # Check if OpenCV region overlaps with expanded item area (includes zoom ROI)
+            if not (x + w < item_left or
+                    x > item_right or
+                    y + h < item_top or
+                    y > item_bottom):
                 is_covered = True
                 break
 
@@ -299,6 +315,127 @@ def find_opencv_supplemental_regions(hsv_image, all_vision_detections):
             'x': center_x,
             'y': center_y,
             'source': 'opencv'
+        })
+
+    return additional_regions
+
+
+def find_digit_supplemental_regions(hsv_image, categorized_detections):
+    """Find small single digits (especially '9') that Vision API and OpenCV Pass 2 missed
+
+    This is Pass 3: Specialized detection for small isolated digits using shape verification.
+    Focuses on finding '9' characters which have distinct shape features.
+    """
+
+    # Convert to grayscale if needed
+    if len(hsv_image.shape) == 3:
+        gray = cv2.cvtColor(hsv_image, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = hsv_image
+
+    # Threshold using Otsu's automatic thresholding
+    _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+    # Invert if needed (white digit on black background for analysis)
+    if np.mean(binary) > 127:
+        binary = cv2.bitwise_not(binary)
+
+    # Find contours with hierarchy to detect holes
+    contours, hierarchy = cv2.findContours(binary, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+
+    additional_regions = []
+
+    # Check each contour
+    for idx, contour in enumerate(contours):
+        area = cv2.contourArea(contour)
+
+        # Skip tiny contours
+        if area < 100:
+            continue
+
+        x, y, w, h = cv2.boundingRect(contour)
+
+        # Size filters: width/height 10-50px
+        if w < 10 or h < 10 or w > 50 or h > 50:
+            continue
+
+        # Check categorized detections overlap to avoid duplicates
+        is_covered = False
+        zoom_padding_h = ZOOM_CONFIG['padding_horizontal']
+        zoom_padding_v = ZOOM_CONFIG['padding']
+
+        print(f"    [DIGIT] Checking '9' candidate at bbox=({x},{y},{w},{h}) - range X:[{x},{x+w}], Y:[{y},{y+h}]")
+
+        for item in categorized_detections:
+            # Get bounds from item - handle different structures
+            if 'bounds' in item:
+                # Items with bounds dict (from non_measurement_text_exclusions)
+                item_left = item['bounds']['left'] - zoom_padding_h
+                item_right = item['bounds']['right'] + zoom_padding_h
+                item_top = item['bounds']['top'] - zoom_padding_v
+                item_bottom = item['bounds']['bottom'] + zoom_padding_v
+            elif 'vertices' in item and item['vertices']:
+                # Items with vertices (from text_items)
+                x_coords = [v['x'] for v in item['vertices']]
+                y_coords = [v['y'] for v in item['vertices']]
+                item_left = min(x_coords) - zoom_padding_h
+                item_right = max(x_coords) + zoom_padding_h
+                item_top = min(y_coords) - zoom_padding_v
+                item_bottom = max(y_coords) + zoom_padding_v
+            else:
+                # Items with only center (approximate bounds)
+                item_left = item['x'] - 10 - zoom_padding_h
+                item_right = item['x'] + 10 + zoom_padding_h
+                item_top = item['y'] - 10 - zoom_padding_v
+                item_bottom = item['y'] + 10 + zoom_padding_v
+
+            if not (x + w < item_left or x > item_right or
+                    y + h < item_top or y > item_bottom):
+                is_covered = True
+                item_text = item.get('text', 'UNKNOWN')
+                print(f"      FILTERED: Overlaps with categorized detection '{item_text}' at [{item_left:.0f},{item_right:.0f}], [{item_top:.0f},{item_bottom:.0f}]")
+                break
+
+        if is_covered:
+            continue
+        else:
+            print(f"      PASS: No overlap with existing Vision detections")
+
+        # === HOLE DETECTION ===
+        has_hole = False
+        hole_count = 0
+
+        if hierarchy is not None:
+            # Check for children (holes) using hierarchy
+            child_idx = hierarchy[0][idx][2]
+
+            while child_idx != -1:
+                hole_contour = contours[child_idx]
+                hole_area = cv2.contourArea(hole_contour)
+
+                # Check absolute hole size (under 50 pixels squared)
+                if hole_area < 50:
+                    hole_count += 1
+
+                child_idx = hierarchy[0][child_idx][0]
+
+            if hole_count >= 1:
+                has_hole = True
+
+        if not has_hole:
+            print(f"      NO HOLE: Candidate has no hole (hole_count={hole_count})")
+            continue
+
+        # Found a "9" shape!
+        print(f"      HAS HOLE: Found {hole_count} hole(s) - adding as '9' detection!")
+        center_x = x + w // 2
+        center_y = y + h // 2
+        additional_regions.append({
+            'text': '9',
+            'center': (center_x, center_y),
+            'x': center_x,
+            'y': center_y,
+            'source': 'digit_detection'
         })
 
     return additional_regions

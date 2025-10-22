@@ -192,7 +192,7 @@ def verify_measurement_at_center(image_path, center, bounds, texts, api_key, cen
         return (best_meas, actual_bounds)
 
 
-def verify_measurement_at_center_with_logic(image_path, center, bounds, texts, api_key, center_index=0, save_debug=False, exclude_items=None):
+def verify_measurement_at_center_with_logic(image_path, center, bounds, texts, api_key, center_index=0, save_debug=False, non_measurement_text_exclusions=None):
     """Same as verify_measurement_at_center but returns (measurement, logic_description)
 
     Returns: ((measurement_value, actual_bounds, special_notation, raw_ocr_text), logic_description)
@@ -711,8 +711,8 @@ def verify_measurement_at_center_with_logic(image_path, center, bounds, texts, a
         print(f"  Chose closest: '{measurement_value}'")
 
         # Check if this measurement should be excluded (e.g., X2, OL, room names)
-        if exclude_items:
-            for exc in exclude_items:
+        if non_measurement_text_exclusions:
+            for exc in non_measurement_text_exclusions:
                 if 'text' in exc and 'x' in exc and 'y' in exc:
                     # Check if extracted text matches excluded text and position is close
                     # Convert zoomed coordinates back to original image coordinates
@@ -721,8 +721,8 @@ def verify_measurement_at_center_with_logic(image_path, center, bounds, texts, a
                     if (exc['text'].upper() == measurement_value.upper() and
                         abs(exc['x'] - original_x) < 50 and
                         abs(exc['y'] - original_y) < 50):
-                        print(f"  Excluding: '{measurement_value}' matches exclude_items")
-                        return None, "Excluded by exclude_items (matches room name, overlay, or label)"
+                        print(f"  Excluding: '{measurement_value}' matches non_measurement_text_exclusions")
+                        return None, "Excluded by non_measurement_text_exclusions (matches room name, overlay, or label)"
 
         # Also check if this measurement matches overlay pattern (e.g., "3/4 01", "3/4 OL")
         if re.search(OVERLAY_PATTERN, measurement_value, re.IGNORECASE):

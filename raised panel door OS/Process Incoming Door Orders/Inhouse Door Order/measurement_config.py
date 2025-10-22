@@ -19,7 +19,7 @@ GROUPING_CONFIG = {
 
 # Zoom verification parameters
 ZOOM_CONFIG = {
-    'padding': 30,           # Vertical padding (top/bottom)
+    'padding': 15,           # Vertical padding (top/bottom) - reduced to allow close measurements
     'padding_horizontal': 50, # Horizontal padding (left/right) - wider to capture full characters
     'zoom_factor': 1         # Magnification factor (Phase 2 verification)
 }
@@ -56,7 +56,7 @@ ROOM_PATTERNS = [
 EXCLUDE_PATTERNS = ['H2', 'NH', 'C', 'UPPERS', 'BASE', 'OR']
 
 # Overlay notation pattern
-OVERLAY_PATTERN = r'(\d+/\d+\s+(?:OL|01|O1|0L))'
+OVERLAY_PATTERN = r'(\d+/\d+\s+(?:OL|O1|O|01|0L))'
 
 # Customer quantity notation pattern (e.g., "1 or 2", "2 or 3")
 QUANTITY_NOTATION_PATTERN = r'\d+\s+or\s+\d+'

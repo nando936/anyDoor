@@ -1,0 +1,46 @@
+{
+  "last_used": {
+    "wood_type": "Beech Paint Grade",
+    "door_style": "101",
+    "edge_profile": "square",
+    "panel_cut": "3/8 MDF",
+    "sticking_cut": "square",
+    "submitted_by": "Nando",
+    "customer_company": "The Raised Panel Door Factory"
+  },
+  "overlay_conversions": {
+    "5/8 OL": 0.625,
+    "1/2 OL": 0.5,
+    "3/4 OL": 0.75,
+    "3/8 OL": 0.375,
+    "1/4 OL": 0.25,
+    "1 OL": 1.0
+  },
+  "drawer_height_threshold": 10.0,
+  "presets": {
+    "preset_1": {
+      "name": "Standard Paint Grade Beech",
+      "wood_type": "Beech Paint Grade",
+      "door_style": "101",
+      "edge_profile": "square",
+      "panel_cut": "3/8 MDF",
+      "sticking_cut": "square"
+    },
+    "preset_2": {
+      "name": "Cherry Natural",
+      "wood_type": "Cherry",
+      "door_style": "101",
+      "edge_profile": "square",
+      "panel_cut": "3/8 MDF",
+      "sticking_cut": "square"
+    },
+    "preset_3": {
+      "name": "Oak Natural",
+      "wood_type": "Red Oak",
+      "door_style": "101",
+      "edge_profile": "square",
+      "panel_cut": "3/8 MDF",
+      "sticking_cut": "square"
+    }
+  }
+}

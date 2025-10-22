@@ -1,0 +1,154 @@
+================================================================================
+DOCLING TABLE EXTRACTION - PROGRESS & NEXT STEPS
+================================================================================
+Date: 2025-10-02
+Project: TruCustom Door Order Form Extraction
+
+================================================================================
+WHAT WE'RE DOING
+================================================================================
+
+Goal: Extract structured data from TruCustom Cabinets door order forms (page 1)
+      - Company name and form fields
+      - DOORS table (QTY, WIDTH, HEIGHT, NOTE columns with multiple rows)
+      - DRAWER FRONTS table (QTY, WIDTH, HEIGHT, NOTE columns with multiple rows)
+
+Current Approach: Testing Docling - an AI-powered PDF/image table extraction tool
+
+================================================================================
+PROBLEM DISCOVERED
+================================================================================
+
+Issue: Docling crashes with "Illegal instruction" error
+Cause: VM doesn't support AVX CPU instructions required by AI models
+Check Result: PyTorch reports "NO AVX" - VM CPU features not enabled
+
+Docling uses these AI models for table extraction:
+- tableformer: Table structure recognition
+- docling-layout-heron: Page layout analysis
+- docling-models: Document understanding models
+
+These models require AVX/AVX2 CPU instruction sets to run.
+
+================================================================================
+CURRENT STATUS
+================================================================================
+
+Completed:
+[x] Installed Docling on 64-bit Python (py -3-64)
+[x] Created extract_with_docling.py script
+[x] Identified VM CPU limitation issue
+[x] Confirmed NO AVX support in VM
+
+Files Created:
+- C:\Users\nando\Projects\anyDoor\raised panel door OS\Process Incoming Door Orders\True Custom Door Order\
+  * .env (Google Vision API key)
+  * extract_order_info.py (Vision API approach - basic)
+  * extract_with_docling.py (Docling approach - needs AVX)
+
+Test File:
+\\vmware-host\Shared Folders\suarez group qb\customers\raised panel\True Custom\all_pages\page_1.png
+
+================================================================================
+NEXT STEPS - AFTER VM RESTART
+================================================================================
+
+1. ENABLE VMware CPU FEATURES:
+   - Shutdown this VM completely
+   - Open VMware settings for this VM
+   - Go to: Processors
+   - Enable: "Virtualize Intel VT-x/EPT or AMD-V/RVI"
+   - Enable: All CPU performance counters
+   - Check: "Preferred mode: Intel VT-x or AMD-V"
+   - Consider: Setting CPU to "Maximum" instead of specific count
+   - Save and restart VM
+
+2. VERIFY AVX SUPPORT:
+   Run this command to check if AVX is now available:
+
+   py -3-64 -c "import torch; print(torch.backends.cpu.get_cpu_capability())"
+
+   Should show: AVX or AVX2 (not "NO AVX")
+
+3. TEST DOCLING:
+   Run the extraction script:
+
+   py -3-64 "C:/Users/nando/Projects/anyDoor/raised panel door OS/Process Incoming Door Orders/True Custom Door Order/extract_with_docling.py" "//vmware-host/Shared Folders/suarez group qb/customers/raised panel/True Custom/all_pages/page_1.png"
+
+   Expected outputs:
+   - page_1_docling.md (markdown with table structure)
+   - page_1_docling.json (structured JSON data)
+
+4. IF DOCLING WORKS:
+   - Review the extracted tables
+   - Compare to actual form data
+   - Adapt the output format to match project needs
+   - Process page 2 if needed
+   - Document the workflow
+
+5. IF DOCLING STILL FAILS:
+   Fallback Plan:
+   - Enhance extract_order_info.py with position-based parsing
+   - Use Vision API text coordinates to extract table rows
+   - Build table structure from spatial layout
+   - This will work without AVX/AI models
+
+================================================================================
+VMware CPU SETTINGS REFERENCE
+================================================================================
+
+Location: VM Settings → Hardware → Processors
+
+Settings to Enable:
+[ ] Number of processors: 2 or more
+[ ] Number of cores per processor: 2 or more
+[x] Virtualize Intel VT-x/EPT or AMD-V/RVI
+[x] Virtualize CPU performance counters
+[ ] Preferred mode: Intel VT-x or AMD-V (automatic is fine)
+
+Advanced:
+- May need to enable in BIOS if disabled at host level
+- Check VMware documentation for your version
+
+================================================================================
+TESTING COMMANDS AFTER RESTART
+================================================================================
+
+# 1. Check AVX support
+py -3-64 -c "import torch; print(torch.backends.cpu.get_cpu_capability())"
+
+# 2. Test Docling extraction
+py -3-64 "C:/Users/nando/Projects/anyDoor/raised panel door OS/Process Incoming Door Orders/True Custom Door Order/extract_with_docling.py" "//vmware-host/Shared Folders/suarez group qb/customers/raised panel/True Custom/all_pages/page_1.png"
+
+# 3. View markdown output
+cat "//vmware-host/Shared Folders/suarez group qb/customers/raised panel/True Custom/all_pages/page_1_docling.md"
+
+# 4. View JSON output
+cat "//vmware-host/Shared Folders/suarez group qb/customers/raised panel/True Custom/all_pages/page_1_docling.json"
+
+================================================================================
+ALTERNATIVE APPROACH (if VM features can't be enabled)
+================================================================================
+
+If AVX cannot be enabled in VM:
+- Use position-based Vision API extraction
+- Parse tables using text element coordinates
+- Group text by vertical position (rows)
+- Group text by horizontal position (columns)
+- Works without AI models, only needs Vision API
+
+Tell Claude: "use vision api approach" to implement this fallback.
+
+================================================================================
+CONTACT POINTS FOR CONTINUATION
+================================================================================
+
+When restarting conversation, say:
+"I enabled VM CPU features, check AVX and test Docling"
+
+Or if features can't be enabled:
+"VM features didn't help, use Vision API position-based approach"
+
+================================================================================
+END OF PROGRESS NOTES
+================================================================================

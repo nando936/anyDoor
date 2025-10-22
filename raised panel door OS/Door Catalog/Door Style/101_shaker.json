@@ -1,0 +1,103 @@
+{
+  "style_number": "101",
+  "style_name": "Shaker",
+  "door_type": "5-piece cope and stick",
+  "description": "5 pc cope and stick door with equal stiles and rails",
+
+  "dimensions": {
+    "stile_width": "2 1/4\"",
+    "rail_width": "2 1/4\"",
+    "stile_width_decimal": 2.25,
+    "rail_width_decimal": 2.25
+  },
+
+  "part_formulas": {
+    "stiles": {
+      "description": "Left and right vertical pieces",
+      "quantity": 2,
+      "width": {
+        "formula": "stile_width + oversize",
+        "calculation": "2.25 + 0.125 = 2.375 inches",
+        "note": "2 1/4 wide plus 1/8 oversize for square cutting during production"
+      },
+      "length": {
+        "formula": "finish_height + 0.25",
+        "calculation": "finish_height + 0.25 inches",
+        "note": "Finish height plus 1/4 inch longer"
+      }
+    },
+
+    "rails": {
+      "description": "Top and bottom horizontal pieces",
+      "quantity": 2,
+      "width": {
+        "formula": "rail_width + oversize",
+        "calculation": "2.25 + 0.125 = 2.375 inches",
+        "note": "2 1/4 wide plus 1/8 oversize for production"
+      },
+      "length": {
+        "formula": "finish_width - (stile_width * 2) + tongue",
+        "calculation": "finish_width - (2.25 * 2) + 1.0",
+        "simplified": "finish_width - 4.5 + 1.0 = finish_width - 3.5 inches",
+        "note": "Finish width minus (2 stiles @ 2 1/4 each) plus 1 inch for tongue"
+      }
+    },
+
+    "center_panel": {
+      "description": "Center raised panel",
+      "quantity": 1,
+      "width": {
+        "formula": "rail_length - 0.0625",
+        "calculation": "(finish_width - 3.5) - 0.0625",
+        "simplified": "finish_width - 3.5625 inches",
+        "note": "Same as rail length minus 1/16 inch"
+      },
+      "length": {
+        "formula": "finish_height - (stile_width * 2 + 1.0) - 0.0625",
+        "calculation": "finish_height - (2.25 * 2 + 1.0) - 0.0625",
+        "simplified": "finish_height - 5.5625 inches",
+        "note": "Finish height minus ((2 x stile width) + 1 inch) minus 1/16 inch"
+      }
+    }
+  },
+
+  "constants": {
+    "stile_oversize": 0.125,
+    "rail_oversize": 0.125,
+    "stile_length_addition": 0.25,
+    "tongue_length": 1.0,
+    "panel_clearance": 0.0625
+  },
+
+  "example_calculation": {
+    "given": {
+      "finish_width": "23 15/16\"",
+      "finish_width_decimal": 23.9375,
+      "finish_height": "32\"",
+      "finish_height_decimal": 32.0
+    },
+    "parts": {
+      "stiles": {
+        "quantity": 2,
+        "width": "2 3/8\"",
+        "length": "32 1/4\"",
+        "width_decimal": 2.375,
+        "length_decimal": 32.25
+      },
+      "rails": {
+        "quantity": 2,
+        "width": "2 3/8\"",
+        "length": "20 7/16\"",
+        "width_decimal": 2.375,
+        "length_decimal": 20.4375
+      },
+      "center_panel": {
+        "quantity": 1,
+        "width": "20 3/8\"",
+        "length": "26 7/16\"",
+        "width_decimal": 20.375,
+        "length_decimal": 26.4375
+      }
+    }
+  }
+}

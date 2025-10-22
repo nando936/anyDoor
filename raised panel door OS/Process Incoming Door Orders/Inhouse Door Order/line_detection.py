@@ -1937,7 +1937,7 @@ def extend_roi_and_get_full_extent(image, measurement, category, image_path=None
     return None
 
 
-def classify_measurements_by_lines(image, measurements, image_path=None, exclude_items=None, all_measurements=None):
+def classify_measurements_by_lines(image, measurements, image_path=None, non_measurement_text_exclusions=None, all_measurements=None):
     """
     Classify measurements as WIDTH, HEIGHT, or UNCLASSIFIED based on nearby dimension lines
 
@@ -1945,7 +1945,7 @@ def classify_measurements_by_lines(image, measurements, image_path=None, exclude
         image: Source image
         measurements: List of measurement dicts
         image_path: Path to image for debug output
-        exclude_items: List of items to exclude from arrow detection (OL text, room names)
+        non_measurement_text_exclusions: List of items to exclude from arrow detection (OL text, room names)
         all_measurements: List of all measurements for text exclusion
         image_path: Path to image file (for debug image saving)
 
@@ -1970,7 +1970,7 @@ def classify_measurements_by_lines(image, measurements, image_path=None, exclude
         print(f"\n  Analyzing measurement {i+1}: '{meas['text']}' at ({meas['position'][0]:.0f}, {meas['position'][1]:.0f})")
 
         # Find lines near this measurement
-        line_info = find_lines_near_measurement(image, meas, save_roi_debug=True, image_path=image_path, exclude_items=exclude_items, all_measurements=all_measurements)
+        line_info = find_lines_near_measurement(image, meas, save_roi_debug=True, image_path=image_path, exclude_items=non_measurement_text_exclusions, all_measurements=all_measurements)
 
         # Check if it's actually classified or unclassified
         if line_info and not line_info.get('unclassified'):
@@ -2000,7 +2000,7 @@ def classify_measurements_by_lines(image, measurements, image_path=None, exclude
                 print(f"    Attempting {angle:+.1f}° rotation...")
                 meas_rot = meas.copy()
                 meas_rot['roi_rotation_angle'] = angle
-                line_info = find_lines_near_measurement(image, meas_rot, save_roi_debug=True, image_path=image_path, exclude_items=exclude_items, all_measurements=all_measurements)
+                line_info = find_lines_near_measurement(image, meas_rot, save_roi_debug=True, image_path=image_path, exclude_items=non_measurement_text_exclusions, all_measurements=all_measurements)
 
                 if line_info and not line_info.get('unclassified'):
                     # Calculate score based on how horizontal the lines are

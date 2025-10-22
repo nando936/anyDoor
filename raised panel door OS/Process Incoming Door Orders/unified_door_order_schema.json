@@ -1,0 +1,217 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Unified Door Order Format",
+  "description": "Standard format for all door orders regardless of source",
+  "type": "object",
+  "required": ["schema_version", "source", "order_info", "specifications", "doors", "drawers", "summary"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "description": "Version of this schema",
+      "const": "1.0"
+    },
+    "source": {
+      "type": "object",
+      "description": "Information about the source of this order",
+      "required": ["type", "original_file", "extraction_date"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["true_custom", "inhouse", "other"],
+          "description": "Type of source order"
+        },
+        "original_file": {
+          "type": "string",
+          "description": "Original file name that was processed"
+        },
+        "extraction_date": {
+          "type": "string",
+          "format": "date",
+          "description": "Date when order was extracted"
+        },
+        "extractor_version": {
+          "type": "string",
+          "description": "Version of extraction script used"
+        }
+      }
+    },
+    "order_info": {
+      "type": "object",
+      "description": "General order information",
+      "required": ["jobsite"],
+      "properties": {
+        "customer_company": {
+          "type": "string",
+          "description": "Customer company name"
+        },
+        "jobsite": {
+          "type": "string",
+          "description": "Jobsite or customer name"
+        },
+        "room": {
+          "type": "string",
+          "description": "Room name (e.g., Kitchen, Master Bath)"
+        },
+        "submitted_by": {
+          "type": "string",
+          "description": "Person who submitted the order"
+        },
+        "order_date": {
+          "type": "string",
+          "format": "date",
+          "description": "Date of the order"
+        }
+      }
+    },
+    "specifications": {
+      "type": "object",
+      "description": "Door manufacturing specifications",
+      "required": ["wood_type", "door_style"],
+      "properties": {
+        "wood_type": {
+          "type": "string",
+          "description": "Type of wood (e.g., 'Beech Paint Grade', 'Cherry')"
+        },
+        "door_style": {
+          "type": "string",
+          "description": "Door style number (e.g., '101', '102')"
+        },
+        "edge_profile": {
+          "type": "string",
+          "description": "Edge profile type (e.g., 'square', 'eased')"
+        },
+        "panel_cut": {
+          "type": "string",
+          "description": "Panel cut specification (e.g., '3/8 MDF', '1/4 plywood')"
+        },
+        "sticking_cut": {
+          "type": "string",
+          "description": "Sticking cut specification"
+        }
+      }
+    },
+    "size_info": {
+      "type": "object",
+      "description": "Information about size measurements",
+      "properties": {
+        "all_sizes_are_finished": {
+          "type": "boolean",
+          "description": "True if all measurements are finished sizes (not opening sizes)"
+        },
+        "conversion_notes": {
+          "type": "string",
+          "description": "Notes about size conversions performed"
+        }
+      }
+    },
+    "doors": {
+      "type": "array",
+      "description": "List of all doors in the order",
+      "items": {
+        "type": "object",
+        "required": ["marker", "qty", "width", "height", "width_decimal", "height_decimal", "sqft"],
+        "properties": {
+          "marker": {
+            "type": "string",
+            "description": "Cabinet marker/number (e.g., '#1', '#2')"
+          },
+          "qty": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Quantity of this door"
+          },
+          "width": {
+            "type": "string",
+            "description": "Width as fractional measurement (e.g., '23 15/16')"
+          },
+          "height": {
+            "type": "string",
+            "description": "Height as fractional measurement (e.g., '32')"
+          },
+          "width_decimal": {
+            "type": "number",
+            "description": "Width in decimal inches"
+          },
+          "height_decimal": {
+            "type": "number",
+            "description": "Height in decimal inches"
+          },
+          "sqft": {
+            "type": "number",
+            "description": "Square footage of one unit"
+          },
+          "location": {
+            "type": "string",
+            "description": "Location/note (e.g., 'Kitchen Fridge Wall')"
+          }
+        }
+      }
+    },
+    "drawers": {
+      "type": "array",
+      "description": "List of all drawer fronts in the order",
+      "items": {
+        "type": "object",
+        "required": ["marker", "qty", "width", "height", "width_decimal", "height_decimal"],
+        "properties": {
+          "marker": {
+            "type": "string",
+            "description": "Cabinet marker/number (e.g., '#14', '#15')"
+          },
+          "qty": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Quantity of this drawer front"
+          },
+          "width": {
+            "type": "string",
+            "description": "Width as fractional measurement"
+          },
+          "height": {
+            "type": "string",
+            "description": "Height as fractional measurement"
+          },
+          "width_decimal": {
+            "type": "number",
+            "description": "Width in decimal inches"
+          },
+          "height_decimal": {
+            "type": "number",
+            "description": "Height in decimal inches"
+          },
+          "location": {
+            "type": "string",
+            "description": "Location/note"
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "description": "Summary statistics",
+      "required": ["total_doors", "total_door_units", "total_drawers", "total_drawer_units", "total_units"],
+      "properties": {
+        "total_doors": {
+          "type": "integer",
+          "description": "Number of unique door items"
+        },
+        "total_door_units": {
+          "type": "integer",
+          "description": "Total quantity of all doors"
+        },
+        "total_drawers": {
+          "type": "integer",
+          "description": "Number of unique drawer items"
+        },
+        "total_drawer_units": {
+          "type": "integer",
+          "description": "Total quantity of all drawers"
+        },
+        "total_units": {
+          "type": "integer",
+          "description": "Total units (doors + drawers)"
+        }
+      }
+    }
+  }
+}

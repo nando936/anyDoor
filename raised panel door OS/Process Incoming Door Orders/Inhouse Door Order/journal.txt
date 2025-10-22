@@ -69,3 +69,352 @@ Last tested pages:
   - Page 8: 4 openings detected (Bath #4, 11/16 OL) ✅ Fixed
 
 ================================================================================
+
+Date: 2025-10-10
+Start: 3:00 PM CT  |  Finish: 5:30 PM CT
+
+WORKING DIRECTORIES:
+-------------------
+Scripts Location:
+  /home/debian/projects/anyDoor/raised panel door OS/Process Incoming Door Orders/Inhouse Door Order/
+
+Scripts Modified:
+  - line_detection.py
+  - measurement_pairing_v2.py
+  - visualization.py
+
+Images Location:
+  /home/debian/OneDrive/raised_panel/Measures-2025-09-09(14-18)/all_pages/
+
+Test Images:
+  - page_8.png (Bath #4, 11/16 OL overlay)
+
+2025-10-10 - Fixed Rotated ROI Coordinate Transformation & Bottom Width Labels
+
+  PROBLEM 1: Lines detected in rotated ROIs were drawn outside ROI boundaries
+
+    Root cause: detect_lines_in_roi() used simple X/Y offset for rotated ROIs,
+    but rotated ROIs need inverse perspective transform to map coordinates back
+    to image space.
+
+  Solution:
+    - Modified extract_rotated_roi() to return (roi, inverse_transform_matrix)
+    - Updated detect_lines_in_roi() to accept inverse_transform parameter
+    - Changed return format to dict: {'image_coords': [...], 'roi_coords': [...]}
+    - Applied cv2.perspectiveTransform() to properly map ROI → image coordinates
+
+  Files Modified:
+    - line_detection.py:
+      - Lines 13-81: extract_rotated_roi() returns inverse transform
+      - Lines 84-150: detect_lines_in_roi() handles perspective transform
+      - Lines 407-557: Updated all ROI extractions to use inverse transform
+      - Lines 440, 472, 482, 585, 620, 710, 755, 1177-1178, 1394:
+        Updated line unpacking to use dict format (line['image_coords'])
+
+  PROBLEM 2: Arrow detection failed in rotated ROIs
+
+    Root cause: check_for_arrows_at_line_ends() received image coordinates
+    but needed ROI coordinates to search arrow patterns in ROI image.
+
+  Solution:
+    - Modified line storage to include both coordinate systems
+    - Arrow detection now uses roi_coords: (0, 0, roi_x1, roi_y1, roi_x2, roi_y2)
+    - Lines 1027, 1031, 1054, 1058: Use line['roi_coords'] for arrow checks
+
+  Files Modified:
+    - line_detection.py (lines 1176-1210): Arrow detection with ROI coords
+
+  PROBLEM 3: H-ROI gap was INCREASING when rotated (should DECREASE)
+
+    Root cause: h_gap_multiplier was 2.5x (moving ROI away from text)
+    but rotated ROIs should move CLOSER to capture angled lines.
+
+  Solution:
+    - Changed h_gap_multiplier from 2.5 to 0.4
+    - H-ROI gap: 10px → 4px when rotated (gets CLOSER to text)
+
+  Files Modified:
+    - line_detection.py (line 163): h_gap_multiplier = 0.4
+
+  PROBLEM 4: Rotation scoring implemented (try all angles, pick best)
+
+    Enhancement: Instead of stopping at first successful rotation, try ALL
+    rotations (±22.5°, ±30°, ±45°) and score based on horizontal alignment.
+
+  Solution:
+    - Calculate deviation = abs(line_angle - rotation_angle)
+    - Pick rotation with lowest score (most horizontal)
+    - Lines show: "BEST ROTATION: -30.0° with score=10.3"
+
+  Files Modified:
+    - line_detection.py (lines 1416-1537): Rotation scoring system
+
+  PROBLEM 5: Bottom width labels not showing in visualization
+
+    Root cause: position_class='bottom' only in pairing's local width copies,
+    not in original measurements_list that visualization uses.
+
+  Solution:
+    - Copy position_class back to measurements_list after classification
+    - Show "BOTTOM WIDTH" label in magenta (255,0,255) with larger font
+
+  Files Modified:
+    - measurement_pairing_v2.py (lines 370-377): Copy position_class to meas
+    - visualization.py (lines 483-485): BOTTOM WIDTH label in magenta
+    - visualization.py (lines 498-500): Larger font for bottom widths
+
+  RESULTS:
+    - M7 '18 1/16' at (906, 1472): Classified as WIDTH via -22.5° rotation
+    - M11 '18 1/16' at (642, 2000): Classified as BOTTOM WIDTH via -30° rotation
+    - Lines now correctly positioned inside rotated ROIs
+    - Bottom width labels visible in magenta on visualization
+
+================================================================================
+
+================================================================================
+
+Date: 2025-10-12
+Start: [Session time not recorded]
+
+WORKING DIRECTORIES:
+-------------------
+Scripts Location:
+  /home/nando/projects/anyDoor/raised panel door OS/Process Incoming Door Orders/Inhouse Door Order/
+
+Scripts Examined:
+  - main.py
+  - measurement_verification.py
+  - line_detection.py
+  - visualization.py
+
+Images Location:
+  /home/nando/onedrive/customers/raised-panel/Measures-2025-09-09(14-18)/all_pages/
+
+Test Images:
+  - page_5.png (Guest bath, 11/16 OL overlay)
+
+2025-10-12 - IDENTIFIED: Bounds Recalculation Issue (DEFERRED)
+
+  PROBLEM: Visualization shows cyan bounding boxes misaligned with text
+  
+    Symptom: M6 on page 5 has cyan box positioned high and to the left of 
+    actual "18" text at (1087, 1780). This causes:
+      - Rotation center calculated from wrong text position
+      - Search zones misaligned with dimension lines
+      - Arrow detection failures (arrows outside search zones)
+
+  ROOT CAUSE: Zoom-verified OCR bounds overwritten by OpenCV font estimates
+
+    Phase 2 (Zoom Verification):
+      - Google Vision OCR provides accurate character-level bounds
+      - M6 zoom output: left=1115, right=1151, width=36px ✓ ACCURATE
+    
+    After Phase 2 (main.py lines 179-209):
+      - Code recalculates bounds using cv2.getTextSize()
+      - OpenCV estimates: getTextSize('18') ≈ 42px + 20% padding = 50px
+      - New bounds: center 1087 ± 25 = left=1062, right=1112 ✗ WRONG
+    
+    The recalculation unconditionally overwrites OCR bounds:
+      ```python
+      meas['bounds'] = new_bounds  # Line 209 - OVERWRITES zoom bounds
+      ```
+    
+    Only logs changes > 20px:
+      - M6: |36 - 50| = 14px < 20px → overwrites silently
+      - M1, M2, M9: diff > 20px → logged but still overwritten
+
+  WHY RECALCULATION EXISTS:
+    - Standardize bounds when OCR bounds missing
+    - Ensure consistent sizing across measurements
+    - Add padding for visualization
+    
+    BUT: OpenCV getTextSize() is for RENDERING, not matching actual image text
+    OCR bounds from Google Vision are more accurate for actual image
+
+  IMPACT:
+    - Classification: Text bounds used to calculate ROI positions
+    - Rotation: Center point affects rotated search zone alignment
+    - Arrows: Misaligned search zones miss arrow endpoints
+    - Visualization: Cyan debug boxes don't match actual text
+
+  WORKAROUNDS IN PLACE:
+    - Dimension line Y calculation uses detected H-line positions (not text Y)
+    - This partially compensates for wrong text bounds
+    - M6 arrows now detected after rotation center fix (10/12)
+
+  DECISION: DEFERRED
+    
+    Rationale: 
+      - Other measurements appear correct in visualization
+      - Only M6 visibly affected on page 5
+      - Need more test cases to understand when recalculation helps vs hurts
+      - Dimension line Y compensation working for now
+    
+    Future Options:
+      1. Remove recalculation entirely (trust OCR bounds)
+      2. Only recalculate when bounds are None or clearly wrong
+      3. Use OCR bounds for dimensions, estimates only for padding
+      4. Add confidence threshold (only recalculate if unreasonable)
+
+  Files Involved:
+    - main.py lines 179-209 (recalculation code - SUSPECT)
+    - measurement_verification.py lines 545-194 (OCR bounds calculation)
+    - line_detection.py lines 162-174 (bounds usage for ROI)
+    - visualization.py lines 437-448 (cyan debug box drawing)
+
+  Test Command:
+    python3 main.py "/home/nando/onedrive/customers/raised-panel/Measures-2025-09-09(14-18)/all_pages/page_5.png"
+    
+    Expected: Cyan box on "18" text at (1087, 1780)
+    Actual: Cyan box high and left of text
+
+  STATUS: Documented for future investigation
+  
+  Action Items:
+    [ ] Test on more pages to see frequency of issue
+    [ ] Determine if recalculation ever improves accuracy
+    [ ] Consider removing lines 179-209 if not needed
+    [ ] Add option to toggle recalculation for comparison
+
+================================================================================
+
+================================================================================
+
+Date: 2025-10-12
+Start: 2:30 PM CT  |  Finish: 3:30 PM CT
+
+SYSTEM CONFIGURATION:
+--------------------
+Location: Debian Linux VPS (nando-aspiretc120)
+Desktop Environment: XFCE
+Display Manager: LightDM
+
+Files Modified:
+  - /opt/google/chrome-remote-desktop/chrome-remote-desktop
+
+2025-10-12 - Chrome Remote Desktop: Share Existing Desktop (Not Virtual Desktop)
+
+  PROBLEM: Chrome Remote Desktop creates separate virtual desktop session
+  
+    Default behavior on Linux:
+      - CRD launches NEW X server on display :20
+      - Creates virtual desktop session (separate from user's actual desktop)
+      - Shows xsession_chooser dialog with 3 session options
+      - All session options immediately disconnect
+      - User cannot access their actual desktop remotely
+    
+    Windows behavior (desired):
+      - CRD shares the CURRENT desktop session
+      - Remote user sees exactly what's on the physical screen
+      - Works for unattended remote access from phone
+  
+  ROOT CAUSE: CRD designed for headless servers, not desktop sharing
+  
+    Default CRD configuration:
+      - FIRST_X_DISPLAY_NUMBER = 20 (creates display :20)
+      - get_unused_display_number() loops to find free display (20, 21, 22...)
+      - _launch_server() starts NEW Xorg/Xvfb server
+      - launch_desktop_session() starts NEW desktop session (xfce4-session)
+      - Result: Completely separate desktop from user's display :0
+
+  SOLUTION: Modify CRD to use existing X server on display :0
+  
+    Step 1: Change display number to 0
+      File: /opt/google/chrome-remote-desktop/chrome-remote-desktop
+      Line 117: FIRST_X_DISPLAY_NUMBER = 20 → FIRST_X_DISPLAY_NUMBER = 0
+    
+    Step 2: Disable display number loop
+      Lines 1455-1456: Commented out while loop in get_unused_display_number()
+      ```python
+      #    while os.path.exists(X_LOCK_FILE_TEMPLATE % display):
+      #      display += 1
+      ```
+    
+    Step 3: Skip launching NEW X server
+      Lines 1569-1674 replaced with:
+      ```python
+      def _launch_server(self, extra_x_args):
+          x_auth_file = os.path.expanduser("~/.Xauthority")
+          self.child_env["XAUTHORITY"] = x_auth_file
+          display = 0  # Use existing display :0
+          
+          self.child_env["DISPLAY"] = ":%d" % display
+          logging.info("Using existing X server on display :%d" % display)
+          
+          self.server_proc = None
+          self.server_supports_randr = False
+      ```
+    
+    Step 4: Skip launching NEW desktop session
+      Lines 1584-1608 replaced with:
+      ```python
+      def launch_desktop_session(self):
+          logging.info("Using existing desktop session on display :0")
+          
+          # Dummy process so CRD doesn't fail
+          self.session_proc = subprocess.Popen(["sleep", "infinity"],
+                                               stdin=subprocess.DEVNULL,
+                                               stdout=subprocess.DEVNULL,
+                                               stderr=subprocess.DEVNULL)
+      ```
+
+  VERIFICATION:
+  
+    Process count:
+      - Before fix: Only 1 CRD process (crashed/failing)
+      - After fix: 5 CRD processes running correctly:
+        * Main Python script (chrome-remote-desktop)
+        * Wireplumber (audio)
+        * chrome-remote-desktop-host (remoting)
+        * crashpad-handler (error reporting)
+        * sleep infinity (dummy session process)
+    
+    Service status:
+      - systemctl status chrome-remote-desktop@nando.service
+      - Status: active (running)
+      - No xsession_chooser process (this was causing dialog)
+    
+    Remote connection:
+      - Connected from Chrome Remote Desktop app on phone
+      - No session chooser dialog
+      - Shows actual XFCE desktop (display :0)
+      - Can see and control current desktop session
+      - Works identically to Windows CRD behavior ✓
+
+  BACKUPS CREATED:
+    - /opt/google/chrome-remote-desktop/chrome-remote-desktop.backup (original)
+    - /opt/google/chrome-remote-desktop/chrome-remote-desktop.backup2 (intermediate)
+
+  PERSISTENT CONFIGURATION:
+  
+    Modifications survive reboots:
+      - CRD service enabled: systemctl enable chrome-remote-desktop@nando.service
+      - Script modifications persist across restarts
+      - No .chrome-remote-desktop-session file needed (removed)
+    
+    PolicyKit password prompts:
+      - Still appears on service start
+      - User manually enters password each time
+      - Attempted PolicyKit rules did not eliminate prompt
+      - Low priority - acceptable workaround
+
+  RESULT: Chrome Remote Desktop now shares existing desktop session ✓
+    - No virtual desktop creation
+    - No session chooser dialogs
+    - Direct access to user's actual desktop from phone
+    - Unattended remote access working correctly
+
+  FILES INVOLVED:
+    - /opt/google/chrome-remote-desktop/chrome-remote-desktop (modified)
+    - /lib/systemd/system/chrome-remote-desktop@.service (systemd unit)
+    - /home/nando/.config/chrome-remote-desktop/ (config directory)
+
+  TESTING NOTES:
+    - Tested from Chrome Remote Desktop mobile app
+    - Connection successful on first attempt
+    - Desktop session fully controllable
+    - Audio streaming working via wireplumber
+    - No disconnection issues
+    - Performance acceptable for remote administration
+
+================================================================================

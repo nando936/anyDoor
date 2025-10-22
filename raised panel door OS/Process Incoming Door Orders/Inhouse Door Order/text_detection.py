@@ -57,7 +57,7 @@ def find_room_and_overlay(annotations, zoom_factor=1.0):
     full_text = annotations[0].get('description', '') if annotations else ''
 
     # Items to exclude (their text and positions)
-    exclude_items = []
+    non_measurement_text_exclusions = []
 
     if full_text:
         # Search for overlay notation
@@ -66,7 +66,7 @@ def find_room_and_overlay(annotations, zoom_factor=1.0):
             overlay_info = overlay_match.group(1).strip()
             print(f"Found overlay: {overlay_info}")
 
-        # Add overlay text parts directly to exclude_items (similar to room names)
+        # Add overlay text parts directly to non_measurement_text_exclusions (similar to room names)
         if overlay_match:
             overlay_parts = overlay_info.split()  # e.g., ["1/2", "OL"] or ["1/2", "O"]
             for ann in annotations[1:]:
@@ -83,7 +83,7 @@ def find_room_and_overlay(annotations, zoom_factor=1.0):
                 if should_exclude:
                     cleaned_exc_text = text.strip().strip('—−–-.,*').strip()
                     exclude_item = _create_exclude_item(ann, zoom_factor, cleaned_exc_text)
-                    exclude_items.append(exclude_item)
+                    non_measurement_text_exclusions.append(exclude_item)
                     print(f"  Excluding overlay part: '{text}' at ({exclude_item['x']:.1f}, {exclude_item['y']:.1f})")
 
         # Detect X2 multiplier notation
@@ -97,7 +97,7 @@ def find_room_and_overlay(annotations, zoom_factor=1.0):
                 ann_text = ann['description'].upper()
                 if re.search(X2_MULTIPLIER_PATTERN, ann_text, re.IGNORECASE):
                     exclude_item = _create_exclude_item(ann, zoom_factor)
-                    exclude_items.append(exclude_item)
+                    non_measurement_text_exclusions.append(exclude_item)
                     print(f"  Excluding X2 text: {ann['description']} at ({exclude_item['x']}, {exclude_item['y']})")
 
             # First, find "OL" text position
@@ -108,7 +108,7 @@ def find_room_and_overlay(annotations, zoom_factor=1.0):
                 if 'OL' in text.upper() or ' 01' in text or ' O1' in text or ' 0L' in text.upper() or ' 0l' in text:
                     cleaned_exc_text = text.strip().strip('—−–-.,*').strip()
                     exclude_item = _create_exclude_item(ann, zoom_factor, cleaned_exc_text)
-                    exclude_items.append(exclude_item)
+                    non_measurement_text_exclusions.append(exclude_item)
                     ol_position = (exclude_item['x'], exclude_item['y'])
                     break
 
@@ -128,7 +128,7 @@ def find_room_and_overlay(annotations, zoom_factor=1.0):
                             # This fraction is close to OL, exclude it
                             cleaned_exc_text = text.strip().strip('—−–-.,*').strip()
                             exclude_item = _create_exclude_item(ann, zoom_factor, cleaned_exc_text)
-                            exclude_items.append(exclude_item)
+                            non_measurement_text_exclusions.append(exclude_item)
                             print(f"  Excluding overlay fraction '{text}' near OL (distance: {distance:.1f}px)")
 
         # Look for room names using configured patterns
@@ -152,7 +152,7 @@ def find_room_and_overlay(annotations, zoom_factor=1.0):
                     else:
                         # Check if this text is part of the room name (e.g., "#3" in "Bath #3")
                         for word in room_words:
-                            if word.upper() in text_upper or text_upper in word.upper():
+                            if text_upper == word.upper():
                                 should_exclude = True
                                 break
 
@@ -164,7 +164,7 @@ def find_room_and_overlay(annotations, zoom_factor=1.0):
                         x_coords = [v.get('x', 0) / zoom_factor for v in vertices]
                         y_coords = [v.get('y', 0) / zoom_factor for v in vertices]
                         cleaned_exc_text = text.strip().strip('—−–-.,*').strip()
-                        exclude_items.append({
+                        non_measurement_text_exclusions.append({
                             'text': cleaned_exc_text,
                             'x': x,
                             'y': y,
@@ -189,7 +189,7 @@ def find_room_and_overlay(annotations, zoom_factor=1.0):
                 for ann in annotations[1:]:
                     if ann['description'].lower() == part.lower():
                         exclude_item = _create_exclude_item(ann, zoom_factor)
-                        exclude_items.append(exclude_item)
+                        non_measurement_text_exclusions.append(exclude_item)
 
         # Also exclude common non-measurement text
         for ann in annotations[1:]:
@@ -199,9 +199,9 @@ def find_room_and_overlay(annotations, zoom_factor=1.0):
             should_exclude = text in EXCLUDE_PATTERNS or any(word in EXCLUDE_PATTERNS for word in words)
             if should_exclude:
                 exclude_item = _create_exclude_item(ann, zoom_factor)
-                exclude_items.append(exclude_item)
+                non_measurement_text_exclusions.append(exclude_item)
 
-    return room_name, overlay_info, exclude_items, x2_multiplier
+    return room_name, overlay_info, non_measurement_text_exclusions, x2_multiplier
 
 
 def extract_measurements_from_text(text):
@@ -281,38 +281,14 @@ def find_interest_areas(image_path, api_key):
         return [], "", "", [], [], 1
 
     # Extract room and overlay info first
-    room_name, overlay_info, exclude_items, x2_multiplier = find_room_and_overlay(annotations, zoom_factor)
+    room_name, overlay_info, non_measurement_text_exclusions, x2_multiplier = find_room_and_overlay(annotations, zoom_factor)
 
     if room_name:
         print(f"Room name: {room_name}")
     if overlay_info:
         print(f"Overlay info: {overlay_info}")
-    if exclude_items:
-        print(f"Excluding {len(exclude_items)} non-measurement items")
-
-    # Collect ALL Vision API detections with bounding boxes for OpenCV to exclude
-    # Convert coordinates back to original scale by dividing by zoom_factor
-    all_vision_detections = []
-    for ann in annotations[1:]:  # Skip full text annotation
-        vertices = ann['boundingPoly']['vertices']
-        x_coords = [v.get('x', 0) / zoom_factor for v in vertices]
-        y_coords = [v.get('y', 0) / zoom_factor for v in vertices]
-
-        # Filter out isolated '1' from all_vision_detections to prevent blocking digit detection
-        # Isolated '1' is typically an arrow or vertical line artifact
-        text = ann['description']
-        if text.strip() == '1':
-            continue  # Skip isolated '1' - don't create exclusion zone
-
-        all_vision_detections.append({
-            'text': text,
-            'x_min': min(x_coords),
-            'x_max': max(x_coords),
-            'y_min': min(y_coords),
-            'y_max': max(y_coords),
-            'center_x': sum(x_coords) / 4,
-            'center_y': sum(y_coords) / 4
-        })
+    if non_measurement_text_exclusions:
+        print(f"Excluding {len(non_measurement_text_exclusions)} non-measurement items")
 
     # Get all text items with numbers (but exclude room/overlay items)
     # Convert coordinates back to original scale by dividing by zoom_factor
@@ -326,6 +302,17 @@ def find_interest_areas(image_path, api_key):
         # Only process if cleaned text still contains digits
         if cleaned_text and any(char.isdigit() for char in cleaned_text):
             vertices = ann['boundingPoly']['vertices']
+
+            # Filter out tall text artifacts (likely vertical lines misread as text)
+            # Calculate height before any adjustments
+            y_coords = [v.get('y', 0) for v in vertices]
+            text_height = max(y_coords) - min(y_coords)
+            if text_height > 150:
+                # Convert to original scale for reporting
+                x_orig = sum(v.get('x', 0) for v in vertices) / 4 / zoom_factor
+                y_orig = sum(v.get('y', 0) for v in vertices) / 4 / zoom_factor
+                print(f"  Filtering tall text '{cleaned_text}' at ({x_orig:.0f}, {y_orig:.0f}) - height={text_height/zoom_factor:.0f}px (> {150/zoom_factor:.0f}px max)")
+                continue
 
             # Adjust bounding box if we removed characters
             if original_text != cleaned_text:
@@ -390,7 +377,7 @@ def find_interest_areas(image_path, api_key):
 
             # Check if this item should be excluded
             should_exclude = False
-            for exc in exclude_items:
+            for exc in non_measurement_text_exclusions:
                 if (exc['text'] == original_text and
                     abs(exc['x'] - x) < 10 and
                     abs(exc['y'] - y) < 10):
@@ -421,8 +408,10 @@ def find_interest_areas(image_path, api_key):
     # === ADD OPENCV SUPPLEMENTATION ===
     print("\nSupplemental OpenCV detection...")
 
-    # Find additional regions with OpenCV - pass ALL Vision detections to exclude them
-    opencv_regions = find_opencv_supplemental_regions(processed_image, all_vision_detections)
+    # Find additional regions with OpenCV - pass categorized detections to exclude them
+    # Build categorized detections from what exists so far
+    categorized_detections = text_items + non_measurement_text_exclusions
+    opencv_regions = find_opencv_supplemental_regions(processed_image, categorized_detections)
 
     # Create visualization
     if len(processed_image.shape) == 2:
@@ -472,8 +461,10 @@ def find_interest_areas(image_path, api_key):
     print("\nSupplemental digit detection...")
 
     # Find small digits that Vision API and OpenCV missed
-    # Use original image for digit detection to preserve holes (HSV processing fills them in)
-    digit_regions = find_digit_supplemental_regions(image, all_vision_detections)
+    # Use preprocessed image for digit detection (deskewing helps detect holes properly)
+    # Build categorized detections including opencv_regions (now available)
+    categorized_detections = text_items + non_measurement_text_exclusions + opencv_regions
+    digit_regions = find_digit_supplemental_regions(processed_image, categorized_detections)
 
     if digit_regions:
         print(f"  Digit detection found {len(digit_regions)} additional '9' shapes")
@@ -563,7 +554,7 @@ def find_interest_areas(image_path, api_key):
             'texts': texts
         })
 
-    return interest_areas, room_name, overlay_info, opencv_regions, exclude_items, x2_multiplier  # Return exclude_items and x2_multiplier
+    return interest_areas, room_name, overlay_info, opencv_regions, non_measurement_text_exclusions, x2_multiplier  # Return non_measurement_text_exclusions and x2_multiplier
 
 
 def is_valid_measurement(texts):

@@ -1,0 +1,2 @@
+[WARNING] Invalid start_opening_number '/home/debian/OneDrive/raised_panel/Measures-2025-09-09(14-18)/all_pages', using default of 1
+[ERROR] Image not found: 8
